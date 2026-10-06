@@ -212,7 +212,6 @@ function membersView(){const f=S.memFilter,q=S.q.trim().toLowerCase();
  </tbody></table></div>`}
 function memberForm(m){m=m||{};const isNew=!m.id;const defOff=m.officeId||singleOffice();
  const others=S.members.filter(x=>x.id!==m.id);
- const opt=sel=>`<option value="">— Not in the team / type below —</option>${others.map(x=>`<option value="${x.id}" ${+sel===x.id?"selected":""}>${esc(x.fullName)}${x.code?" ("+esc(x.code)+")":""}</option>`).join("")}`;
  const tools=m.tools||[];
  return`<div class="scrim"><div class="modal" role="dialog" aria-modal="true"><div class="mhead"><h2>${isNew?"Add member":"Edit "+esc(m.fullName)}</h2><button class="x" data-act="close" aria-label="Close">×</button></div>
  <form data-form="member" data-id="${m.id||""}">
@@ -231,11 +230,10 @@ function memberForm(m){m=m||{};const isNew=!m.id;const defOff=m.officeId||single
   <label class="f">Office<select name="officeId" required>${S.offices.map(o=>`<option value="${o.id}" ${+defOff===o.id?"selected":""}>${esc(o.name)}</option>`).join("")}</select></label>
   <label class="f">Date joined the team<input type="date" name="joinedDate" value="${esc(m.joinedDate||S.todayStr)}"></label>
   <label class="f">NeoLife distributor ID<input name="neolifeId" value="${esc(m.neolifeId||"")}"></label>
-  <label class="f">Sponsor<select name="sponsorId">${opt(m.sponsorId)}</select></label>
-  <label class="f">Sponsor name (if not in the team)<input name="sponsorName" value="${esc(m.sponsorName||"")}"></label>
-  <label class="f">Sponsor phone (if not in the team)<input name="sponsorPhone" type="tel" value="${esc(m.sponsorPhone||"")}"></label>
-  <label class="f">Upline<select name="uplineId">${opt(m.uplineId)}</select></label>
-  <label class="f">Upline name (if not in the team)<input name="uplineName" value="${esc(m.uplineName||"")}"></label></div></fieldset>
+  <label class="f">Sponsor name<input name="sponsorName" list="memberNames" value="${esc(sponsorName(m))}" autocomplete="off"></label>
+  <label class="f">Sponsor phone<input name="sponsorPhone" type="tel" value="${esc(sponsorPhone(m)||"")}"></label>
+  <label class="f">Upline<input name="uplineName" list="memberNames" value="${esc(uplineName(m))}" autocomplete="off"></label>
+  <datalist id="memberNames">${others.map(x=>`<option value="${esc(x.fullName)}">`).join("")}</datalist></div></fieldset>
  <fieldset><legend>Status</legend><div class="fg">
   <label class="f">Team stage<select name="stage">${STAGES.map(s=>`<option ${(m.stage||"New Member")===s?"selected":""}>${s}</option>`).join("")}</select></label>
   <label class="f">NeoLife rank<select name="rank"><option value="">Not yet ranked</option>${ranks().map(r=>`<option ${m.rank===r?"selected":""}>${esc(r)}</option>`).join("")}</select></label>
@@ -252,7 +250,7 @@ function memberForm(m){m=m||{};const isNew=!m.id;const defOff=m.officeId||single
   <label class="f full">Leader notes<textarea name="notes">${esc(m.notes||"")}</textarea></label></div></fieldset>
  <fieldset><label class="chk"><input type="checkbox" name="consent" required ${m.consent?"checked":""}> The member (and a parent or guardian for anyone under 18) agreed to these details being kept by the team.</label></fieldset>
  <div class="row" style="margin-top:18px"><button class="btn pri">${isNew?"Add member":"Save changes"}</button><button type="button" class="btn" data-act="close">Cancel</button></div></form></div></div>`}
-function profileModal(m){const o=officeById(m.officeId)||{};const kids=S.members.filter(x=>+x.sponsorId===m.id);
+function profileModal(m){const o=officeById(m.officeId)||{};const kids=S.members.filter(x=>x.id!==m.id&&(+x.sponsorId===m.id||(x.sponsorName||"").trim().toLowerCase()===m.fullName.trim().toLowerCase()));
  const dl=rows=>{const h=rows.filter(r=>r[1]!==""&&r[1]!=null).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");return h?`<dl class="dl">${h}</dl>`:'<p class="muted small">Not added.</p>'};
  const hist=[...(m.rankHistory||[]).map(h=>({d:h.date,t:h.rank})),...(m.stageHistory||[]).map(h=>({d:h.date,t:h.stage}))].sort((x,y)=>(y.d||"").localeCompare(x.d||""));
  return`<div class="scrim" data-act="closeBg"><div class="modal" role="dialog" aria-modal="true"><div class="mhead"><div class="row" style="gap:16px">${avatar(m,"lg")}<div><h1>${esc(m.fullName)}</h1><div class="muted">${esc(m.code||"")} · ${esc(o.name||"")}</div><div class="row" style="margin-top:6px">${stageTag(m.stage)}${m.rank?rankTag(m.rank):""}${m.status==="inactive"?'<span class="tag red">Inactive</span>':""}</div></div></div><button class="x" data-act="close" aria-label="Close">×</button></div>
@@ -383,7 +381,7 @@ document.addEventListener("submit",ev=>{const form=ev.target,kind=form.dataset.f
  else if(kind==="rec"){await api("att_edit",{memberId:+form.dataset.id,date:form.dataset.d,in:g("in"),out:g("out"),excused:!!fd.get("excused"),note:g("note")});closeModal();invalidate();await refresh();toast("Saved")}
  else if(kind==="member"){const id=+form.dataset.id||0;const keys=["fullName","gender","dob","phone","email","address","photo","gName","gRel","gPhone","gEmail","officeId","joinedDate","neolifeId","sponsorId","sponsorName","sponsorPhone","uplineId","uplineName","stage","rank","toolsDate","status","pin","occupation","why","prevJoined","prevWhen","whyQuit","notes"];
   const m={id};keys.forEach(k=>m[k]=g(k));m.officeId=+m.officeId;m.tools=[fd.get("toolPhone")&&"Phone",fd.get("toolLaptop")&&"Laptop"].filter(Boolean);m.consent=!!fd.get("consent");
-  if(m.sponsorId){m.sponsorName="";m.sponsorPhone=""}if(m.uplineId)m.uplineName="";if(m.prevJoined!=="yes")m.whyQuit="";
+  m.sponsorId="";m.uplineId="";if(m.prevJoined!=="yes")m.whyQuit="";
   await api("member_save",{member:m});closeModal();await refresh();toast(id?"Changes saved":"Member added")}
  else if(kind==="fin"){await api("finance_add",{date:g("date"),memberId:+g("memberId")||null,type:g("type"),currency:g("currency"),amount:parseFloat(g("amount")),note:g("note")});form.reset();S.fin.entries=null;render();toast("Entry added")}
  else if(kind==="offices"){await api("offices_save",{offices:S.offices.map(o=>({id:o.id,name:g("name_"+o.id),code:g("code_"+o.id),lateAfter:g("late_"+o.id),closeAt:g("close_"+o.id)}))});await refresh();toast("Offices saved")}
