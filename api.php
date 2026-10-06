@@ -3,6 +3,10 @@
 //  Unstoppable Team HQ — API
 // ============================================================
 declare(strict_types=1);
+if (!is_file(__DIR__ . '/config.php')) {
+  header('Content-Type: application/json; charset=utf-8'); http_response_code(500);
+  echo json_encode(['error' => 'Setup not finished: in File Manager, copy config.sample.php to config.php and add your database details. Then open install.php.']); exit;
+}
 require __DIR__ . '/config.php';
 date_default_timezone_set(APP_TZ);
 
@@ -394,5 +398,12 @@ try {
 } catch (Throwable $e) {
   try { if (db()->inTransaction()) db()->rollBack(); } catch (Throwable $x) {}
   error_log('UTHQ: ' . $e->getMessage());
-  fail($e instanceof PDOException ? 'Database error. Check the settings in config.php.' : 'Server error. Please try again.', 500);
+  $msg = 'Server error. Please try again.';
+  if ($e instanceof PDOException) {
+    $c = (string)$e->getCode();
+    $msg = $c === '42S02' ? 'The database tables are missing. Open install.php to finish setup.'
+         : (in_array($c, ['1045', '1044', '1049', '2002'], true) || stripos($e->getMessage(), 'access denied') !== false ? "Can't connect to the database. Check DB_NAME, DB_USER and DB_PASS in config.php."
+         : 'Database error. Check the settings in config.php.');
+  }
+  fail($msg, 500);
 }

@@ -4,6 +4,7 @@
 //  Run once, then DELETE this file from your hosting.
 // ============================================================
 declare(strict_types=1);
+if (!is_file(__DIR__ . '/config.php')) { header('Content-Type: text/html; charset=utf-8'); exit('<p style="font:16px system-ui;margin:10vh auto;max-width:480px">Setup not finished: in File Manager, copy <b>config.sample.php</b> to <b>config.php</b> and add your database details, then reload this page.</p>'); }
 require __DIR__ . '/config.php';
 date_default_timezone_set(APP_TZ);
 header('Content-Type: text/html; charset=utf-8');
