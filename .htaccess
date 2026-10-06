@@ -1,0 +1,20 @@
+Options -Indexes
+DirectoryIndex index.html
+
+# Never serve the settings file or the schema
+<FilesMatch "^(config|schema)\.php$">
+  Require all denied
+</FilesMatch>
+
+# Always use HTTPS
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} off
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "same-origin"
+</IfModule>

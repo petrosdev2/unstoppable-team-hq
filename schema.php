@@ -1,0 +1,79 @@
+<?php
+// Table definitions, used by install.php
+return [
+"CREATE TABLE IF NOT EXISTS offices (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  code VARCHAR(8) NOT NULL DEFAULT '',
+  late_after CHAR(5) NOT NULL DEFAULT '09:00',
+  close_at CHAR(5) NOT NULL DEFAULT '17:00',
+  created_at DATETIME NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  email VARCHAR(190) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(10) NOT NULL DEFAULT 'leader',
+  office_id INT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  last_login DATETIME NULL,
+  created_at DATETIME NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS members (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  office_id INT NOT NULL,
+  code VARCHAR(20) NOT NULL DEFAULT '',
+  full_name VARCHAR(160) NOT NULL,
+  stage VARCHAR(40) NOT NULL DEFAULT 'New Member',
+  rank_name VARCHAR(60) NOT NULL DEFAULT '',
+  status VARCHAR(10) NOT NULL DEFAULT 'active',
+  joined_date DATE NULL,
+  dob DATE NULL,
+  pin_hash VARCHAR(255) NULL,
+  data LONGTEXT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  updated_by INT NULL,
+  INDEX (office_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS attendance (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  office_id INT NOT NULL,
+  member_id INT NOT NULL,
+  date DATE NOT NULL,
+  sign_in DATETIME NULL,
+  sign_out DATETIME NULL,
+  excused TINYINT(1) NOT NULL DEFAULT 0,
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  by_user INT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY member_day (member_id, date),
+  INDEX office_day (office_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS weekend_sessions (
+  office_id INT NOT NULL,
+  date DATE NOT NULL,
+  PRIMARY KEY (office_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS finance (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  date DATE NOT NULL,
+  member_id INT NULL,
+  type VARCHAR(20) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'NGN',
+  amount DECIMAL(14,2) NOT NULL,
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  INDEX (date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS settings (
+  k VARCHAR(40) PRIMARY KEY,
+  v LONGTEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS login_attempts (
+  ip VARCHAR(45) NOT NULL,
+  at DATETIME NOT NULL,
+  INDEX (ip, at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+];
