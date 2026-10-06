@@ -5,7 +5,15 @@
 // ============================================================
 declare(strict_types=1);
 if (!is_file(__DIR__ . '/config.php')) { header('Content-Type: text/html; charset=utf-8'); exit('<p style="font:16px system-ui;margin:10vh auto;max-width:480px">Setup not finished: in File Manager, copy <b>config.sample.php</b> to <b>config.php</b> and add your database details, then reload this page.</p>'); }
-require __DIR__ . '/config.php';
+try { require __DIR__ . '/config.php'; } catch (Throwable $e) {
+  http_response_code(500); header('Content-Type: ' . (basename(__FILE__) === 'api.php' ? 'application/json' : 'text/html') . '; charset=utf-8');
+  $m = 'config.php has a typing mistake on line ' . $e->getLine() . ': ' . $e->getMessage() . '. Open it in File Manager and fix that line.';
+  echo basename(__FILE__) === 'api.php' ? json_encode(['error' => $m]) : '<p style="font:16px system-ui;margin:10vh auto;max-width:520px;background:#F6E0DA;color:#A8412B;padding:14px;border-radius:8px">' . htmlspecialchars($m) . '</p>';
+  exit;
+}
+if (!defined('DB_NAME') || !defined('DB_USER') || !defined('DB_PASS')) { http_response_code(500); exit('config.php is missing DB_NAME, DB_USER or DB_PASS.'); }
+if (!defined('DB_HOST')) define('DB_HOST', 'localhost');
+if (!defined('APP_TZ')) define('APP_TZ', 'Africa/Lagos');
 date_default_timezone_set(APP_TZ);
 header('Content-Type: text/html; charset=utf-8');
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
