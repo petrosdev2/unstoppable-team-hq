@@ -9,7 +9,6 @@ Files in this folder:
 | `api.php` | The server: logins, members, attendance, finance |
 | `config.sample.php` | Template for `config.php`. Copy it to `config.php` on the server and fill in your database details. `config.php` is never stored in GitHub. |
 | `schema.php` | Database tables (used by the installer) |
-| `install.php` | One-time setup. **Delete after use.** |
 | `.htaccess` | Security: forces HTTPS, hides config.php |
 
 ## 1. Choose where it lives
