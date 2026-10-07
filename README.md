@@ -50,3 +50,19 @@ Hostinger Premium takes automatic backups. To keep your own copy: hPanel → **D
 
 ## Time zone
 Sign-in times use Nigerian time (Africa/Lagos). To change it, edit `APP_TZ` in `config.php`.
+
+## Features added in version 2
+- **Forgot password**: email reset link (valid 1 hour). You can also add a second **Admin** on the Team page.
+- **Follow-ups**: log calls/visits on a member's profile or from the dashboard's "Needs a follow-up" card.
+- **Prospects**: track invited people, who invited them, trainings attended, and convert them to members.
+- **Trainings & fines**: record training attendance (members + guests); fines calculate automatically from the rule in Settings.
+- **Business numbers**: monthly PV, BV, sales and PV targets per member.
+- **Edit history**: "Last edited by" on attendance, plus a full Activity log in Settings.
+- **Attendance history**: month-by-month and day-by-day on each member's profile.
+- **WhatsApp/SMS alerts**: set an n8n webhook in Settings; add the daily cron job shown there.
+- **All-time finance balances** per member (Finance → All-time balances).
+- **Full backup to Excel** (Settings → Backup).
+- **Check-in photos** (optional, Settings) to stop people signing in for friends.
+
+The database upgrades itself automatically the first time the new version runs.
+`cron.php` sends the daily digest; protect its key and don't share the URL.

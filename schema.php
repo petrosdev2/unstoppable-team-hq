@@ -48,6 +48,8 @@ return [
   note VARCHAR(255) NOT NULL DEFAULT '',
   by_user INT NULL,
   updated_at DATETIME NOT NULL,
+  photo_in MEDIUMTEXT NULL,
+  photo_out MEDIUMTEXT NULL,
   UNIQUE KEY member_day (member_id, date),
   INDEX office_day (office_id, date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
@@ -75,5 +77,86 @@ return [
   ip VARCHAR(45) NOT NULL,
   at DATETIME NOT NULL,
   INDEX (ip, at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS followups (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  member_id INT NOT NULL,
+  office_id INT NOT NULL,
+  date DATE NOT NULL,
+  method VARCHAR(20) NOT NULL DEFAULT 'call',
+  outcome VARCHAR(500) NOT NULL DEFAULT '',
+  next_step VARCHAR(255) NOT NULL DEFAULT '',
+  by_user INT NULL,
+  by_name VARCHAR(120) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  INDEX (member_id), INDEX (office_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS prospects (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  office_id INT NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  phone VARCHAR(40) NOT NULL DEFAULT '',
+  invited_by VARCHAR(160) NOT NULL DEFAULT '',
+  source VARCHAR(60) NOT NULL DEFAULT '',
+  first_contact DATE NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'new',
+  notes TEXT NULL,
+  member_id INT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  by_user INT NULL,
+  INDEX (office_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS performance (
+  member_id INT NOT NULL,
+  month CHAR(7) NOT NULL,
+  office_id INT NOT NULL,
+  pv DECIMAL(12,2) NOT NULL DEFAULT 0,
+  bv DECIMAL(12,2) NOT NULL DEFAULT 0,
+  sales DECIMAL(14,2) NOT NULL DEFAULT 0,
+  target_pv DECIMAL(12,2) NOT NULL DEFAULT 0,
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  updated_at DATETIME NOT NULL,
+  by_user INT NULL,
+  PRIMARY KEY (member_id, month),
+  INDEX (office_id, month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS trainings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  office_id INT NOT NULL,
+  date DATE NOT NULL,
+  type VARCHAR(60) NOT NULL,
+  title VARCHAR(160) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  by_user INT NULL,
+  INDEX (office_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS training_attendance (
+  training_id INT NOT NULL,
+  kind CHAR(1) NOT NULL,
+  person_id INT NOT NULL,
+  PRIMARY KEY (training_id, kind, person_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS fines_paid (
+  member_id INT NOT NULL,
+  month CHAR(7) NOT NULL,
+  paid_at DATETIME NOT NULL,
+  by_user INT NULL,
+  PRIMARY KEY (member_id, month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS audit_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  at DATETIME NOT NULL,
+  user_id INT NULL,
+  user_name VARCHAR(120) NOT NULL DEFAULT '',
+  office_id INT NULL,
+  action VARCHAR(40) NOT NULL,
+  detail VARCHAR(500) NOT NULL DEFAULT '',
+  INDEX (at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS password_resets (
+  user_id INT NOT NULL PRIMARY KEY,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 ];
