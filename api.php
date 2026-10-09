@@ -547,7 +547,8 @@ try {
       $new = ['emails' => $emails, 'from' => $from, 'waNumbers' => str($al['waNumbers'] ?? '', 2000), 'waPhoneId' => preg_replace('/\D/', '', (string)($al['waPhoneId'] ?? '')),
         'waToken' => trim((string)($al['waToken'] ?? '')) !== '' ? trim((string)$al['waToken']) : (!empty($al['clearToken']) ? '' : $cur['waToken']),
         'waTemplate' => $tpl, 'waLang' => preg_replace('/[^A-Za-z_]/', '', str($al['waLang'] ?? 'en', 10)) ?: 'en',
-        'onLate' => !empty($al['onLate']), 'onNewMember' => !empty($al['onNewMember']), 'onDigest' => !empty($al['onDigest'])];
+        'onLate' => !empty($al['onLate']), 'onNewMember' => !empty($al['onNewMember']), 'onDigest' => !empty($al['onDigest']),
+        'onBirthday' => !empty($al['onBirthday']), 'bdTemplate' => (preg_replace('/[^a-z0-9_]/', '', strtolower(str($al['bdTemplate'] ?? 'birthday_wish', 100))) ?: 'birthday_wish')];
       setSetting('alerts', json_encode($new, JSON_UNESCAPED_UNICODE));
     }
     audit($a, 'settings_save', implode(', ', array_keys(array_diff_key($in, ['action' => 1]))));

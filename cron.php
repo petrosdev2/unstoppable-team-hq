@@ -30,5 +30,7 @@ foreach ($offices as $o) {
 }
 $res = notify('daily_digest', ['offices' => $digest], true);
 $summary = !empty($res['off']) ? 'Daily report is switched off in Settings' : ('Email: ' . (isset($res['email']['sent']) ? $res['email']['sent'] . ' sent' : 'not set up') . ' · WhatsApp: ' . (isset($res['whatsapp']['sent']) ? $res['whatsapp']['sent'] . ' sent' . (!empty($res['whatsapp']['errors']) ? ', ' . count($res['whatsapp']['errors']) . ' failed' : '') : 'not set up'));
+$bd = sendBirthdayWishes();
+if (empty($bd['off']) && $bd['people']) $summary .= ' · Birthday wishes: ' . count($bd['people']) . ' celebrating, ' . $bd['whatsapp'] . ' WhatsApp, ' . $bd['email'] . ' email' . ($bd['errors'] ? ', ' . count($bd['errors']) . ' failed' : '');
 audit(null, 'daily_digest', $summary);
-echo json_encode(['result' => $summary, 'details' => $res, 'offices' => $digest], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+echo json_encode(['result' => $summary, 'details' => $res, 'birthdays' => $bd, 'offices' => $digest], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

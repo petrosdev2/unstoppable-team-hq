@@ -150,7 +150,7 @@ function mb_strimwidth_safe(string $s, int $n): string { return function_exists(
 function alertConfig(): array {
   $c = jsonSetting('alerts', []);
   return array_merge(['emails' => '', 'from' => '', 'waNumbers' => '', 'waPhoneId' => '', 'waToken' => '', 'waTemplate' => 'team_alert', 'waLang' => 'en',
-    'onLate' => true, 'onNewMember' => true, 'onDigest' => true], is_array($c) ? $c : []);
+    'onLate' => true, 'onNewMember' => true, 'onDigest' => true, 'onBirthday' => true, 'bdTemplate' => 'birthday_wish'], is_array($c) ? $c : []);
 }
 
 function formatAlert(string $event, array $d): array {
@@ -195,6 +195,52 @@ function sendAlertEmail(array $cfg, string $subject, string $text): array {
   $ok = 0; $bad = [];
   foreach ($to as $e) { if (@mail($e, $subj, $text . "\r\n\r\n— Unstoppable Team HQ", $headers, '-f' . $from)) $ok++; else $bad[] = $e; }
   return ['sent' => $ok, 'failed' => $bad];
+}
+
+function normPhone(string $n): string {
+  $n = preg_replace('/\D/', '', $n);
+  if (strlen($n) === 11 && $n[0] === '0') $n = '234' . substr($n, 1);
+  return $n;
+}
+
+/* Send one WhatsApp template message; returns '' on success or the error text */
+function sendWaTemplate(array $cfg, string $to, string $template, array $params): string {
+  if ($cfg['waPhoneId'] === '' || $cfg['waToken'] === '') return 'WhatsApp not set up';
+  if (!function_exists('curl_init')) return 'cURL is not available on this server.';
+  $base = defined('WA_API_BASE') ? WA_API_BASE : 'https://graph.facebook.com/v25.0';
+  $body = json_encode(['messaging_product' => 'whatsapp', 'to' => $to, 'type' => 'template', 'template' => ['name' => $template, 'language' => ['code' => $cfg['waLang'] ?: 'en'],
+    'components' => [['type' => 'body', 'parameters' => array_map(fn($p) => ['type' => 'text', 'text' => (string)$p], $params)]]]], JSON_UNESCAPED_UNICODE);
+  $c = curl_init($base . '/' . rawurlencode(preg_replace('/\D/', '', $cfg['waPhoneId'])) . '/messages');
+  curl_setopt_array($c, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_CONNECTTIMEOUT => 5,
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $cfg['waToken']]]);
+  $resp = (string)curl_exec($c); $code = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); $err = curl_error($c); curl_close($c);
+  if ($code >= 200 && $code < 300) return '';
+  $j = json_decode($resp, true);
+  return $j['error']['error_data']['details'] ?? $j['error']['message'] ?? ($err ?: "HTTP $code");
+}
+
+/* Birthday wishes straight to each member celebrating today */
+function sendBirthdayWishes(): array {
+  $cfg = alertConfig();
+  if (empty($cfg['onBirthday'])) return ['off' => true];
+  $out = ['whatsapp' => 0, 'email' => 0, 'errors' => [], 'people' => []];
+  $rows = q("SELECT m.full_name, m.data, o.name office FROM members m JOIN offices o ON o.id=m.office_id WHERE m.status='active' AND DATE_FORMAT(m.dob,'%m-%d')=?", [date('m-d')])->fetchAll();
+  foreach ($rows as $r) {
+    $d = json_decode((string)$r['data'], true) ?: [];
+    $first = trim(explode(' ', trim($r['full_name']))[0]) ?: $r['full_name'];
+    $out['people'][] = $r['full_name'];
+    if (!empty($d['phone']) && $cfg['waPhoneId'] !== '' && $cfg['waToken'] !== '') {
+      $e = sendWaTemplate($cfg, normPhone($d['phone']), $cfg['bdTemplate'] ?: 'birthday_wish', [$first]);
+      if ($e === '') $out['whatsapp']++; else $out['errors'][] = "{$r['full_name']}: $e";
+    }
+    if (!empty($d['email']) && filter_var($d['email'], FILTER_VALIDATE_EMAIL)) {
+      $msg = "Happy birthday, $first! 🎉\n\nThe whole Unstoppable Team celebrates you today. Wishing you joy, good health and a great year of growth.\n\nWith love,\nUnstoppable Team ({$r['office']})";
+      $res = sendAlertEmail(array_merge($cfg, ['emails' => $d['email']]), "Happy birthday, $first! 🎉", $msg);
+      if (!empty($res['sent'])) $out['email']++;
+    }
+  }
+  if ($out['errors']) audit(null, 'birthday_whatsapp_error', implode('; ', $out['errors']));
+  return $out;
 }
 
 function waNumbers(array $cfg): array {
