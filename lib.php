@@ -212,7 +212,7 @@ function sendAlertWhatsApp(array $cfg, string $oneLine): array {
   $nums = waNumbers($cfg);
   if (!$nums || $cfg['waPhoneId'] === '' || $cfg['waToken'] === '') return ['skipped' => true];
   if (!function_exists('curl_init')) return ['error' => 'cURL is not available on this server.'];
-  $base = defined('WA_API_BASE') ? WA_API_BASE : 'https://graph.facebook.com/v21.0';
+  $base = defined('WA_API_BASE') ? WA_API_BASE : 'https://graph.facebook.com/v25.0';
   $url = $base . '/' . rawurlencode(preg_replace('/\D/', '', $cfg['waPhoneId'])) . '/messages';
   $mh = curl_multi_init(); $hs = [];
   foreach ($nums as $n) {
