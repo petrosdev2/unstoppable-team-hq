@@ -146,18 +146,130 @@ function audit(?array $u, string $action, string $detail = '', $oid = null): voi
 }
 function mb_strimwidth_safe(string $s, int $n): string { return function_exists('mb_substr') ? mb_substr($s, 0, $n) : substr($s, 0, $n); }
 
-function notify(string $event, array $data): bool {
-  $url = (string)setting('webhook_url', '');
-  if ($url === '' || !preg_match('#^https?://#i', $url)) return false;
-  $body = json_encode(['event' => $event, 'app' => 'Unstoppable Team HQ', 'sentAt' => now(), 'data' => $data], JSON_UNESCAPED_UNICODE);
-  if (function_exists('curl_init')) {
-    $c = curl_init($url);
-    curl_setopt_array($c, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 4, CURLOPT_CONNECTTIMEOUT => 3]);
-    curl_exec($c); $code = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); curl_close($c);
-    return $code >= 200 && $code < 300;
+/* ---------- alerts: email + WhatsApp (+ optional webhook) ---------- */
+function alertConfig(): array {
+  $c = jsonSetting('alerts', []);
+  return array_merge(['emails' => '', 'from' => '', 'waNumbers' => '', 'waPhoneId' => '', 'waToken' => '', 'waTemplate' => 'team_alert', 'waLang' => 'en',
+    'onLate' => true, 'onNewMember' => true, 'onDigest' => true], is_array($c) ? $c : []);
+}
+
+function formatAlert(string $event, array $d): array {
+  $subject = 'Unstoppable Team HQ'; $t = '';
+  if ($event === 'late_signin') {
+    $subject = "Late sign-in: {$d['member']}";
+    $t = "⏰ LATE SIGN-IN\n{$d['member']} signed in at {$d['time']}\nOffice: {$d['office']} (late after {$d['lateAfter']})" . (!empty($d['phone']) ? "\nPhone: {$d['phone']}" : '');
+  } elseif ($event === 'new_member') {
+    $subject = "New member: {$d['member']}";
+    $t = "🎉 NEW MEMBER\n{$d['member']}" . (!empty($d['phone']) ? " ({$d['phone']})" : '') . (!empty($d['office']) ? "\nOffice: {$d['office']}" : '') . "\nStage: {$d['stage']}";
+  } elseif ($event === 'test') {
+    $subject = 'Test from Unstoppable Team HQ';
+    $t = '✅ ' . ($d['message'] ?? 'Test message');
+  } elseif ($event === 'daily_digest') {
+    $parts = []; $date = '';
+    foreach (($d['offices'] ?? []) as $o) {
+      $date = $o['date'] ?? $date; $y = $o['yesterday'] ?? [];
+      $p = "🏢 {$o['office']}\n";
+      $p .= !empty($y['session']) ? "Yesterday: {$y['signedIn']} of {$o['activeMembers']} members signed in" : 'Yesterday: no session';
+      if (!empty($y['forgotToSignOut'])) $p .= "\nForgot to sign out: " . implode(', ', $y['forgotToSignOut']);
+      $abs = $o['absent3Days'] ?? [];
+      $p .= $abs ? "\n⚠️ Absent 3 days (please follow up):\n" . implode("\n", array_map(fn($a) => '• ' . $a['name'] . ($a['phone'] ? ' – ' . $a['phone'] : ''), $abs)) : "\nNo one absent 3 days in a row 👍";
+      if (!empty($o['birthdaysToday'])) $p .= "\n🎂 Birthday today: " . implode(', ', array_column($o['birthdaysToday'], 'name'));
+      $parts[] = $p;
+    }
+    $subject = "Daily report $date";
+    $t = "📋 UNSTOPPABLE TEAM – DAILY REPORT $date\n\n" . implode("\n\n", $parts);
+  } else { $t = "Unstoppable Team HQ: $event"; }
+  $one = trim(preg_replace('/\s{2,}/u', ' ', preg_replace('/\n+/', ' | ', $t)));
+  if (mb_strimwidth_len($one) > 900) $one = mb_strimwidth_safe($one, 880) . '… (full report in email)';
+  return [$subject, $t, $one];
+}
+function mb_strimwidth_len(string $s): int { return function_exists('mb_strlen') ? mb_strlen($s) : strlen($s); }
+
+function sendAlertEmail(array $cfg, string $subject, string $text): array {
+  $to = array_values(array_filter(array_map('trim', preg_split('/[,;\s]+/', (string)$cfg['emails'])), fn($e) => filter_var($e, FILTER_VALIDATE_EMAIL)));
+  if (!$to) return ['skipped' => true];
+  $host = preg_replace('/[^A-Za-z0-9.\-]/', '', explode(':', (string)($_SERVER['HTTP_HOST'] ?? (parse_url((string)setting('site_url', ''), PHP_URL_HOST) ?: 'localhost')))[0]);
+  $from = filter_var($cfg['from'], FILTER_VALIDATE_EMAIL) ? $cfg['from'] : 'no-reply@' . preg_replace('/^www\./', '', $host);
+  $subj = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+  $headers = "From: Unstoppable Team HQ <$from>\r\nReply-To: $from\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit";
+  $ok = 0; $bad = [];
+  foreach ($to as $e) { if (@mail($e, $subj, $text . "\r\n\r\n— Unstoppable Team HQ", $headers, '-f' . $from)) $ok++; else $bad[] = $e; }
+  return ['sent' => $ok, 'failed' => $bad];
+}
+
+function waNumbers(array $cfg): array {
+  $out = [];
+  foreach (preg_split('/[\n,;]+/', (string)$cfg['waNumbers']) as $n) {
+    $n = preg_replace('/\D/', '', $n);
+    if ($n === '') continue;
+    if (strlen($n) === 11 && $n[0] === '0') $n = '234' . substr($n, 1);
+    $out[] = $n;
   }
-  $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\n", 'content' => $body, 'timeout' => 4, 'ignore_errors' => true]]);
-  return @file_get_contents($url, false, $ctx) !== false;
+  return array_values(array_unique($out));
+}
+
+function sendAlertWhatsApp(array $cfg, string $oneLine): array {
+  $nums = waNumbers($cfg);
+  if (!$nums || $cfg['waPhoneId'] === '' || $cfg['waToken'] === '') return ['skipped' => true];
+  if (!function_exists('curl_init')) return ['error' => 'cURL is not available on this server.'];
+  $base = defined('WA_API_BASE') ? WA_API_BASE : 'https://graph.facebook.com/v21.0';
+  $url = $base . '/' . rawurlencode(preg_replace('/\D/', '', $cfg['waPhoneId'])) . '/messages';
+  $mh = curl_multi_init(); $hs = [];
+  foreach ($nums as $n) {
+    $body = json_encode(['messaging_product' => 'whatsapp', 'to' => $n, 'type' => 'template', 'template' => ['name' => $cfg['waTemplate'] ?: 'team_alert', 'language' => ['code' => $cfg['waLang'] ?: 'en'],
+      'components' => [['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $oneLine]]]]]], JSON_UNESCAPED_UNICODE);
+    $c = curl_init($url);
+    curl_setopt_array($c, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_CONNECTTIMEOUT => 5,
+      CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $cfg['waToken']]]);
+    curl_multi_add_handle($mh, $c); $hs[$n] = $c;
+  }
+  do { $st = curl_multi_exec($mh, $run); if ($run) curl_multi_select($mh, 1); } while ($run && $st === CURLM_OK);
+  $ok = 0; $errs = [];
+  foreach ($hs as $n => $c) {
+    $code = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); $resp = (string)curl_multi_getcontent($c);
+    if ($code >= 200 && $code < 300) $ok++;
+    else { $j = json_decode($resp, true); $errs[] = $n . ': ' . ($j['error']['error_data']['details'] ?? $j['error']['message'] ?? (curl_error($c) ?: "HTTP $code")); }
+    curl_multi_remove_handle($mh, $c); curl_close($c);
+  }
+  curl_multi_close($mh);
+  return ['sent' => $ok, 'errors' => $errs];
+}
+
+function sendWebhook(string $event, array $data): ?bool {
+  $url = (string)setting('webhook_url', '');
+  if ($url === '' || !preg_match('#^https?://#i', $url) || !function_exists('curl_init')) return null;
+  $c = curl_init($url);
+  curl_setopt_array($c, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode(['event' => $event, 'app' => 'Unstoppable Team HQ', 'sentAt' => now(), 'data' => $data], JSON_UNESCAPED_UNICODE),
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3]);
+  curl_exec($c); $code = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); curl_close($c);
+  return $code >= 200 && $code < 300;
+}
+
+function deliverAlert(string $event, array $data): array {
+  $cfg = alertConfig();
+  [$subject, $text, $one] = formatAlert($event, $data);
+  $r = ['email' => sendAlertEmail($cfg, $subject, $text), 'whatsapp' => sendAlertWhatsApp($cfg, $one), 'webhook' => sendWebhook($event, $data)];
+  if (!empty($r['whatsapp']['errors'])) audit(null, 'whatsapp_error', implode('; ', $r['whatsapp']['errors']));
+  return $r;
+}
+
+/* Send now (sync=true) or after the reply has gone back to the user (so check-in stays fast) */
+function notify(string $event, array $data, bool $sync = false) {
+  $cfg = alertConfig();
+  if (($event === 'late_signin' && !$cfg['onLate']) || ($event === 'new_member' && !$cfg['onNewMember']) || ($event === 'daily_digest' && !$cfg['onDigest'])) return ['off' => true];
+  if ($sync) return deliverAlert($event, $data);
+  static $queued = false;
+  $GLOBALS['__uthq_alerts'][] = [$event, $data];
+  if (!$queued) {
+    $queued = true;
+    register_shutdown_function(function () {
+      if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+      elseif (function_exists('litespeed_finish_request')) @litespeed_finish_request();
+      ignore_user_abort(true);
+      foreach ($GLOBALS['__uthq_alerts'] ?? [] as [$e, $d]) { try { deliverAlert($e, $d); } catch (Throwable $x) { error_log('UTHQ alert: ' . $x->getMessage()); } }
+    });
+  }
+  return ['queued' => true];
 }
 
 /* Members absent on each of the last 3 session days (per office) */

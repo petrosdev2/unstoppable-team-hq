@@ -70,7 +70,7 @@ try {
     $fu = [];
     foreach (q('SELECT f.member_id, f.date, f.by_name FROM followups f JOIN (SELECT member_id, MAX(id) mid FROM followups WHERE office_id IN (' . inList($ids) . ') GROUP BY member_id) x ON x.mid=f.id')->fetchAll() as $r) $fu[(int)$r['member_id']] = ['date' => $r['date'], 'by' => $r['by_name']];
     $settings = ['trainingTypes' => trainingTypes(), 'fineRule' => fineRule(), 'kioskPhoto' => setting('kiosk_photo', '0') === '1'];
-    if ($u['role'] === 'admin') { $settings['webhookUrl'] = (string)setting('webhook_url', ''); $settings['cronKey'] = (string)setting('cron_key', ''); }
+    if ($u['role'] === 'admin') { $ac = alertConfig(); $ac['hasToken'] = $ac['waToken'] !== ''; unset($ac['waToken']); $settings['alerts'] = $ac; $settings['webhookUrl'] = (string)setting('webhook_url', ''); $settings['cronKey'] = (string)setting('cron_key', ''); }
     out(['user' => publicUser($u), 'offices' => $offices, 'ranks' => ranks(), 'members' => $members,
          'today' => $t, 'now' => now(), 'tz' => APP_TZ, 'att' => attQuery($ids, $t, $t), 'lastFollowups' => $fu, 'settings' => $settings]);
 
@@ -196,7 +196,8 @@ try {
       q('INSERT INTO members (office_id,code,full_name,stage,rank_name,status,joined_date,dob,pin_hash,data,created_at,updated_at,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
         [$oid, $code, $name, $stage, $rank, $status, $joined ?? today(), $dob, $pinHash, $json, now(), now(), $u['id']]);
       $id = (int)db()->lastInsertId();
-      notify('new_member', ['member' => $name, 'phone' => $data['phone'], 'officeId' => $oid, 'stage' => $stage]);
+      $on = q('SELECT name FROM offices WHERE id=?', [$oid])->fetch();
+      notify('new_member', ['member' => $name, 'phone' => $data['phone'], 'officeId' => $oid, 'office' => $on['name'] ?? '', 'stage' => $stage]);
     }
     audit($u, $old ? 'member_edit' : 'member_add', $name . ($old && $old['rank_name'] !== $rank ? " (rank {$old['rank_name']} → $rank)" : '') . ($old && $old['stage'] !== $stage ? " (stage {$old['stage']} → $stage)" : ''), $oid);
     out(['member' => memberRow(q('SELECT * FROM members WHERE id=?', [$id])->fetch())]);
@@ -537,12 +538,25 @@ try {
     if (isset($in['kioskPhoto'])) setSetting('kiosk_photo', $in['kioskPhoto'] ? '1' : '0');
     if (isset($in['webhookUrl'])) { $w = str($in['webhookUrl'], 500); if ($w !== '' && !preg_match('#^https://#i', $w)) fail('The webhook address must start with https://'); setSetting('webhook_url', $w); }
     if (!empty($in['newCronKey'])) setSetting('cron_key', bin2hex(random_bytes(16)));
+    if (isset($in['alerts']) && is_array($in['alerts'])) {
+      $al = $in['alerts']; $cur = alertConfig();
+      $emails = implode(', ', array_filter(array_map('trim', preg_split('/[,;\s]+/', str($al['emails'] ?? '', 1000)))));
+      foreach (preg_split('/[,;\s]+/', $emails) as $e) if ($e !== '' && !filter_var($e, FILTER_VALIDATE_EMAIL)) fail("This email doesn't look right: $e");
+      $from = str($al['from'] ?? '', 190); if ($from !== '' && !filter_var($from, FILTER_VALIDATE_EMAIL)) fail('The "send from" email doesn\'t look right.');
+      $tpl = preg_replace('/[^a-z0-9_]/', '', strtolower(str($al['waTemplate'] ?? 'team_alert', 100))) ?: 'team_alert';
+      $new = ['emails' => $emails, 'from' => $from, 'waNumbers' => str($al['waNumbers'] ?? '', 2000), 'waPhoneId' => preg_replace('/\D/', '', (string)($al['waPhoneId'] ?? '')),
+        'waToken' => trim((string)($al['waToken'] ?? '')) !== '' ? trim((string)$al['waToken']) : (!empty($al['clearToken']) ? '' : $cur['waToken']),
+        'waTemplate' => $tpl, 'waLang' => preg_replace('/[^A-Za-z_]/', '', str($al['waLang'] ?? 'en', 10)) ?: 'en',
+        'onLate' => !empty($al['onLate']), 'onNewMember' => !empty($al['onNewMember']), 'onDigest' => !empty($al['onDigest'])];
+      setSetting('alerts', json_encode($new, JSON_UNESCAPED_UNICODE));
+    }
     audit($a, 'settings_save', implode(', ', array_keys(array_diff_key($in, ['action' => 1]))));
     out(['ok' => true]);
 
   case 'webhook_test':
+  case 'alerts_test':
     admin();
-    out(['ok' => notify('test', ['message' => 'Unstoppable Team HQ is connected.'])]);
+    out(['result' => deliverAlert('test', ['message' => 'Unstoppable Team HQ is connected.'])]);
 
   case 'audit_list':
     admin();

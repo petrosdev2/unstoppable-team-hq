@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-//  Unstoppable Team HQ — daily digest for WhatsApp/SMS alerts
+//  Unstoppable Team HQ — daily report by email and WhatsApp
 //  Run once a day by a Hostinger cron job (see Settings in the app)
 //  or by opening: https://your-site/cron.php?key=YOUR_CRON_KEY
 // ============================================================
@@ -28,6 +28,7 @@ foreach ($offices as $o) {
     'absent3Days' => array_map(fn($a) => ['name' => $a['name'], 'phone' => $a['phone']], absenceStreaks([$oid])),
     'birthdaysToday' => $birthdays];
 }
-$sent = notify('daily_digest', ['offices' => $digest]);
-audit(null, 'daily_digest', $sent ? 'Sent to webhook' : 'Webhook not set or failed');
-echo json_encode(['sent' => $sent, 'offices' => $digest], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+$res = notify('daily_digest', ['offices' => $digest], true);
+$summary = !empty($res['off']) ? 'Daily report is switched off in Settings' : ('Email: ' . (isset($res['email']['sent']) ? $res['email']['sent'] . ' sent' : 'not set up') . ' · WhatsApp: ' . (isset($res['whatsapp']['sent']) ? $res['whatsapp']['sent'] . ' sent' . (!empty($res['whatsapp']['errors']) ? ', ' . count($res['whatsapp']['errors']) . ' failed' : '') : 'not set up'));
+audit(null, 'daily_digest', $summary);
+echo json_encode(['result' => $summary, 'details' => $res, 'offices' => $digest], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

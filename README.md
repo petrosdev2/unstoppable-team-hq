@@ -59,7 +59,7 @@ Sign-in times use Nigerian time (Africa/Lagos). To change it, edit `APP_TZ` in `
 - **Business numbers**: monthly PV, BV, sales and PV targets per member.
 - **Edit history**: "Last edited by" on attendance, plus a full Activity log in Settings.
 - **Attendance history**: month-by-month and day-by-day on each member's profile.
-- **WhatsApp/SMS alerts**: set an n8n webhook in Settings; add the daily cron job shown there.
+- **WhatsApp & email alerts**: sent straight from the site (no n8n needed). Fill in Settings → Alerts by WhatsApp & email, and add the daily cron job shown there. An n8n webhook is still optional under Advanced.
 - **All-time finance balances** per member (Finance → All-time balances).
 - **Full backup to Excel** (Settings → Backup).
 - **Check-in photos** (optional, Settings) to stop people signing in for friends.

@@ -483,9 +483,23 @@ function settingsExtras(){const st=S.settings,rule=st.fineRule;const base=locati
  <label class="f">Fined if absent more than (times a month)<input type="number" min="0" name="threshold" value="${rule.threshold}"></label></div>
  <p class="small muted" style="margin:14px 0 6px">Ranks that can be fined</p><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px">${ranks().map(r=>`<label class="chk"><input type="checkbox" name="frank" value="${esc(r)}" ${rule.ranks.includes(r)?"checked":""}> ${esc(r)}</label>`).join("")}</div>
  <div class="row" style="margin-top:12px"><button class="btn pri">Save trainings &amp; fines</button></div></form></div>
- <div class="card" style="margin-top:16px"><h2>WhatsApp / SMS alerts</h2><p class="small muted">The app sends events to an n8n (or Make/Zapier) webhook, which then sends WhatsApp or SMS messages. Events: <b>late_signin</b>, <b>new_member</b>, and a <b>daily_digest</b> with absentees (3 days), birthdays and missed sign-outs.</p>
- <form data-form="webhook" class="row" style="margin-top:12px"><input name="url" type="url" placeholder="https://your-n8n.example.com/webhook/..." value="${esc(st.webhookUrl||"")}" style="flex:1;min-width:240px"><button class="btn pri">Save</button><button type="button" class="btn" data-act="testHook">Send test</button></form>
- <p class="small" style="margin:14px 0 4px"><b>Daily digest:</b> in hPanel go to <b>Advanced → Cron Jobs</b>, choose <b>Custom</b>, set it to run once a day (e.g. 7:00), and paste this command:</p>
+${(()=>{const a=st.alerts||{};return`<div class="card" style="margin-top:16px"><h2>Alerts by WhatsApp &amp; email</h2>
+ <p class="small muted">The app sends these straight from your site: <b>late sign-ins</b>, <b>new members</b>, and a <b>daily report</b> each morning (absent 3 days, birthdays, missed sign-outs).</p>
+ <form data-form="alerts"><div class="fg" style="margin-top:12px">
+  <label class="f full">Email alerts to (separate with commas)<input name="emails" value="${esc(a.emails||"")}" placeholder="you@gmail.com, leader@gmail.com"></label>
+  <label class="f">Send from (an email on your domain)<input name="from" type="email" value="${esc(a.from||"")}" placeholder="alerts@petronixtechnology.com"></label>
+  <label class="f full">WhatsApp numbers (one per line, e.g. 08012345678)<textarea name="waNumbers" style="min-height:80px" placeholder="08012345678&#10;08098765432">${esc(a.waNumbers||"")}</textarea></label>
+  <label class="f">WhatsApp phone number ID<input name="waPhoneId" value="${esc(a.waPhoneId||"")}" inputmode="numeric" placeholder="from Meta → API Setup"></label>
+  <label class="f">WhatsApp access token<input name="waToken" type="password" autocomplete="off" placeholder="${a.hasToken?"Saved — leave blank to keep":"Paste token (starts with EAA…)"}"></label>
+  <label class="f">Template name<input name="waTemplate" value="${esc(a.waTemplate||"team_alert")}"></label>
+  <label class="f">Template language<input name="waLang" value="${esc(a.waLang||"en")}"></label></div>
+ <p class="small muted" style="margin:14px 0 6px">Send these alerts</p>
+ <div class="row"><label class="chk"><input type="checkbox" name="onLate" ${a.onLate!==false?"checked":""}> Late sign-ins</label><label class="chk"><input type="checkbox" name="onNewMember" ${a.onNewMember!==false?"checked":""}> New members</label><label class="chk"><input type="checkbox" name="onDigest" ${a.onDigest!==false?"checked":""}> Daily report</label></div>
+ <div class="row" style="margin-top:14px"><button class="btn pri">Save alerts</button><button type="button" class="btn" data-act="testHook">Send a test</button>${a.hasToken?'<button type="button" class="btn danger" data-act="clearToken">Remove WhatsApp token</button>':""}</div></form>
+ <div id="alertResult" style="margin-top:10px"></div>
+ <details style="margin-top:14px"><summary class="small muted" style="cursor:pointer">Advanced: also send to an n8n/Make webhook (optional)</summary>
+ <form data-form="webhook" class="row" style="margin-top:10px"><input name="url" type="url" placeholder="https://…/webhook/…" value="${esc(st.webhookUrl||"")}" style="flex:1;min-width:240px"><button class="btn">Save webhook</button></form></details></div>`})()}
+ <div class="card" style="margin-top:16px"><h2>Daily report timing</h2><p class="small" style="margin:6px 0 4px">To get the report every morning, in hPanel go to <b>Advanced → Cron Jobs</b>, choose <b>Custom</b>, set it to run once a day (e.g. 7:00), and paste this command:</p>
  <textarea readonly id="cronCmd" style="font-family:monospace;min-height:56px">wget -q -O /dev/null "${esc(cronUrl)}"</textarea>
  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="copyCron">Copy command</button><button class="btn sm" data-act="newCronKey">Make a new key</button></div></div>
  <div class="card" style="margin-top:16px"><h2>Backup</h2><p class="small muted">Downloads everything (offices, members, attendance, follow-ups, prospects, business numbers, trainings, finance, team and activity) as one Excel file. Keep a copy somewhere safe, e.g. once a month.</p><button class="btn pri" data-act="backup" style="margin-top:10px">Download full backup (Excel)</button></div>
@@ -539,7 +553,13 @@ document.addEventListener("click",ev=>{const el=ev.target.closest("[data-act]");
  else if(a==="tickAll"){document.querySelectorAll(`#modal input[name=${el.dataset.g}]`).forEach(c=>c.checked=el.dataset.v==="1")}
  else if(a==="finePaid"){await api("fine_paid",{memberId:id,month:S.trMonth,paid:el.dataset.p==="1"});S.trCache={};render();toast(el.dataset.p==="1"?"Marked as paid":"Marked as unpaid")}
  else if(a==="finTab"){S.fin.tab=el.dataset.t;S.fin.bal=null;render()}
- else if(a==="testHook"){const r=await api("webhook_test");toast(r.ok?"Test sent. Check n8n.":"Couldn't reach the webhook. Save the address first and check it.")}
+ else if(a==="testHook"){const box=document.getElementById("alertResult");if(box)box.innerHTML='<p class="small muted">Sending…</p>';const r=(await api("alerts_test")).result;
+  const em=r.email||{},wa=r.whatsapp||{};const lines=[];
+  lines.push(em.skipped?'<span class="tag">Email: not set up</span>':(em.failed&&em.failed.length?`<span class="tag red">Email: ${em.sent} sent, failed for ${esc(em.failed.join(", "))}</span>`:`<span class="tag green">Email: sent to ${em.sent}</span>`));
+  lines.push(wa.skipped?'<span class="tag">WhatsApp: not set up</span>':wa.error?`<span class="tag red">WhatsApp: ${esc(wa.error)}</span>`:`<span class="tag ${wa.errors&&wa.errors.length?"gold":"green"}">WhatsApp: sent to ${wa.sent}</span>`);
+  if(r.webhook!==null&&r.webhook!==undefined)lines.push(`<span class="tag ${r.webhook?"green":"red"}">Webhook: ${r.webhook?"ok":"failed"}</span>`);
+  if(box)box.innerHTML=`<div class="row">${lines.join("")}</div>${wa.errors&&wa.errors.length?`<p class="small" style="color:var(--red);margin-top:8px">${wa.errors.map(esc).join("<br>")}</p>`:""}<p class="small muted" style="margin-top:6px">Email can take a few minutes. Check spam the first time.</p>`}
+ else if(a==="clearToken"){if(!(await askConfirm("Remove the WhatsApp token?","WhatsApp alerts will stop until you paste a new one.","Remove")))return;await api("settings_save",{alerts:Object.assign({},S.settings.alerts,{clearToken:true,waToken:""})});await refresh();toast("Token removed")}
  else if(a==="copyCron"){const t=document.getElementById("cronCmd");t.select();try{await navigator.clipboard.writeText(t.value)}catch(e){document.execCommand("copy")}toast("Copied")}
  else if(a==="newCronKey"){if(!(await askConfirm("Make a new key?","The old cron command stops working. You'll need to paste the new one in hPanel.","Make new key")))return;await api("settings_save",{newCronKey:true});await refresh();toast("New key made. Update the cron job.")}
  else if(a==="backup")await doBackup();
@@ -595,6 +615,7 @@ document.addEventListener("submit",ev=>{const form=ev.target,kind=form.dataset.f
  else if(kind==="training"){const sel=n=>[...form.querySelectorAll(`input[name=${n}]:checked`)].map(c=>+c.value);await api("training_save",{id:+form.dataset.id||0,officeId:singleOffice(),date:g("date"),type:g("type"),title:g("title"),members:sel("tm"),prospects:sel("tp")});S.trCache={};S.prospects=null;closeModal();render();toast("Training saved")}
  else if(kind==="perf"){const oid=singleOffice(),rows=S.members.filter(m=>m.officeId===oid&&fd.has("pv_"+m.id)).map(m=>({memberId:m.id,pv:+g("pv_"+m.id)||0,targetPv:+g("tg_"+m.id)||0,bv:+g("bv_"+m.id)||0,sales:+g("sl_"+m.id)||0,note:g("nt_"+m.id)}));await api("perf_save",{officeId:oid,month:S.pfMonth,rows});S.pfCache={};render();toast("Numbers saved")}
  else if(kind==="trainingSettings"){const types=g("types").split("\n").map(x=>x.trim()).filter(Boolean);await api("settings_save",{trainingTypes:types,fineRule:{amount:+g("amount")||0,type:g("ftype"),threshold:+g("threshold")||0,ranks:fd.getAll("frank")}});await refresh();S.trCache={};toast("Saved")}
+ else if(kind==="alerts"){await api("settings_save",{alerts:{emails:g("emails"),from:g("from"),waNumbers:fd.get("waNumbers")||"",waPhoneId:g("waPhoneId"),waToken:g("waToken"),waTemplate:g("waTemplate"),waLang:g("waLang"),onLate:!!fd.get("onLate"),onNewMember:!!fd.get("onNewMember"),onDigest:!!fd.get("onDigest")}});await refresh();toast("Alert settings saved")}
  else if(kind==="webhook"){await api("settings_save",{webhookUrl:g("url")});await refresh();toast("Webhook saved")}
  else if(kind==="pw"){await api("password_change",{current:fd.get("current"),new:fd.get("new")});closeModal();toast("Password changed")}
  else if(kind==="kiosk"){const m=S.byId[+form.dataset.id];const j=await api("att_sign",{memberId:m.id,pin:g("pin"),kind:form.dataset.a,photo:S.settings.kioskPhoto?grabPhoto():""});closeModal();S.kq="";await refresh();
