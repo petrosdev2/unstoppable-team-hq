@@ -548,6 +548,7 @@ try {
         'waToken' => trim((string)($al['waToken'] ?? '')) !== '' ? trim((string)$al['waToken']) : (!empty($al['clearToken']) ? '' : $cur['waToken']),
         'waTemplate' => $tpl, 'waLang' => preg_replace('/[^A-Za-z_]/', '', str($al['waLang'] ?? 'en', 10)) ?: 'en',
         'onLate' => !empty($al['onLate']), 'onNewMember' => !empty($al['onNewMember']), 'onDigest' => !empty($al['onDigest']),
+        'waBusinessId' => preg_replace('/\D/', '', (string)($al['waBusinessId'] ?? '')),
         'onBirthday' => !empty($al['onBirthday']), 'bdTemplate' => (preg_replace('/[^a-z0-9_]/', '', strtolower(str($al['bdTemplate'] ?? 'birthday_wish', 100))) ?: 'birthday_wish')];
       setSetting('alerts', json_encode($new, JSON_UNESCAPED_UNICODE));
     }
@@ -558,6 +559,25 @@ try {
   case 'alerts_test':
     admin();
     out(['result' => deliverAlert('test', ['message' => 'Unstoppable Team HQ is connected.'])]);
+
+  case 'wa_templates':
+    admin();
+    $cfg = alertConfig();
+    if ($cfg['waToken'] === '') fail('Save your WhatsApp access token first.');
+    if ($cfg['waBusinessId'] === '') fail('Add your WhatsApp Business account ID first, then click Save alerts.');
+    $results = [];
+    if (!empty($in['create'])) {
+      foreach (waTemplateDefs($cfg) as $t) {
+        $r = waGraph($cfg, 'POST', '/' . $cfg['waBusinessId'] . '/message_templates', $t);
+        $results[$t['name']] = $r['ok'] ? 'submitted' : (stripos($r['error'], 'already') !== false || stripos($r['error'], 'exist') !== false ? 'already there' : 'error: ' . $r['error']);
+      }
+      audit(me(), 'wa_templates_create', json_encode($results, JSON_UNESCAPED_UNICODE));
+    }
+    $st = [];
+    $r = waGraph($cfg, 'GET', '/' . $cfg['waBusinessId'] . '/message_templates?fields=name,status,category,language&limit=100');
+    if (!$r['ok']) fail("Meta said: {$r['error']}");
+    foreach (($r['data']['data'] ?? []) as $t) $st[] = ['name' => $t['name'], 'status' => $t['status'] ?? '', 'category' => $t['category'] ?? '', 'language' => $t['language'] ?? ''];
+    out(['created' => $results, 'templates' => $st]);
 
   case 'audit_list':
     admin();

@@ -150,7 +150,7 @@ function mb_strimwidth_safe(string $s, int $n): string { return function_exists(
 function alertConfig(): array {
   $c = jsonSetting('alerts', []);
   return array_merge(['emails' => '', 'from' => '', 'waNumbers' => '', 'waPhoneId' => '', 'waToken' => '', 'waTemplate' => 'team_alert', 'waLang' => 'en',
-    'onLate' => true, 'onNewMember' => true, 'onDigest' => true, 'onBirthday' => true, 'bdTemplate' => 'birthday_wish'], is_array($c) ? $c : []);
+    'onLate' => true, 'onNewMember' => true, 'onDigest' => true, 'onBirthday' => true, 'bdTemplate' => 'birthday_wish', 'waBusinessId' => ''], is_array($c) ? $c : []);
 }
 
 function formatAlert(string $event, array $d): array {
@@ -217,6 +217,28 @@ function sendWaTemplate(array $cfg, string $to, string $template, array $params)
   if ($code >= 200 && $code < 300) return '';
   $j = json_decode($resp, true);
   return $j['error']['error_data']['details'] ?? $j['error']['message'] ?? ($err ?: "HTTP $code");
+}
+
+/* Templates the app needs, created on Meta through the API */
+function waTemplateDefs(array $cfg): array {
+  return [
+    ['name' => $cfg['waTemplate'] ?: 'team_alert', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'UTILITY',
+     'components' => [['type' => 'BODY', 'text' => 'Hello, here is your Unstoppable Team HQ update: {{1}}. This is an automated message from the team app.',
+       'example' => ['body_text' => [['Kemi signed in late at 09:40 at Unstoppable Team Ondo']]]]]],
+    ['name' => $cfg['bdTemplate'] ?: 'birthday_wish', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'MARKETING',
+     'components' => [['type' => 'BODY', 'text' => 'Happy birthday, {{1}}! 🎉 The whole Unstoppable Team celebrates you today. Wishing you joy, good health and a great year of growth.',
+       'example' => ['body_text' => [['Bola']]]]]],
+  ];
+}
+function waGraph(array $cfg, string $method, string $path, ?array $body = null): array {
+  $base = defined('WA_API_BASE') ? WA_API_BASE : 'https://graph.facebook.com/v25.0';
+  $c = curl_init($base . $path);
+  $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $cfg['waToken']]];
+  if ($method === 'POST') { $opts[CURLOPT_POST] = true; $opts[CURLOPT_POSTFIELDS] = json_encode($body, JSON_UNESCAPED_UNICODE); }
+  curl_setopt_array($c, $opts);
+  $resp = (string)curl_exec($c); $code = (int)curl_getinfo($c, CURLINFO_HTTP_CODE); $err = curl_error($c); curl_close($c);
+  $j = json_decode($resp, true) ?: [];
+  return ['ok' => $code >= 200 && $code < 300, 'data' => $j, 'error' => $j['error']['error_user_msg'] ?? $j['error']['message'] ?? ($err ?: ($code >= 300 ? "HTTP $code" : ''))];
 }
 
 /* Birthday wishes straight to each member celebrating today */
