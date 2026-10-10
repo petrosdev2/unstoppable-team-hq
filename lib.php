@@ -255,12 +255,15 @@ function waGraph(array $cfg, string $method, string $path, ?array $body = null):
 function sendBirthdayWishes(): array {
   $cfg = alertConfig();
   if (empty($cfg['onBirthday'])) return ['off' => true];
-  $out = ['whatsapp' => 0, 'email' => 0, 'errors' => [], 'people' => []];
-  $rows = q("SELECT m.full_name, m.data, o.name office FROM members m JOIN offices o ON o.id=m.office_id WHERE m.status='active' AND DATE_FORMAT(m.dob,'%m-%d')=?", [date('m-d')])->fetchAll();
+  $out = ['whatsapp' => 0, 'email' => 0, 'errors' => [], 'people' => [], 'alreadySent' => 0];
+  $done = jsonSetting('birthday_sent', []); if (!is_array($done)) $done = [];
+  $rows = q("SELECT m.id, m.full_name, m.data, o.name office FROM members m JOIN offices o ON o.id=m.office_id WHERE m.status='active' AND DATE_FORMAT(m.dob,'%m-%d')=?", [date('m-d')])->fetchAll();
   foreach ($rows as $r) {
+    if (($done[(string)$r['id']] ?? '') === today()) { $out['alreadySent']++; continue; }
     $d = json_decode((string)$r['data'], true) ?: [];
     $first = trim(explode(' ', trim($r['full_name']))[0]) ?: $r['full_name'];
     $out['people'][] = $r['full_name'];
+    $done[(string)$r['id']] = today();
     if (!empty($d['phone']) && $cfg['waPhoneId'] !== '' && $cfg['waToken'] !== '') {
       $e = sendWaTemplate($cfg, normPhone($d['phone']), $cfg['bdTemplate'] ?: 'birthday_wish', [$first]);
       if ($e === '') $out['whatsapp']++; else $out['errors'][] = "{$r['full_name']}: $e";
@@ -271,6 +274,8 @@ function sendBirthdayWishes(): array {
       if (!empty($res['sent'])) $out['email']++;
     }
   }
+  foreach ($done as $k => $v) if ($v < date('Y-m-d', strtotime(today() . ' -400 day'))) unset($done[$k]);
+  setSetting('birthday_sent', json_encode($done));
   if ($out['errors']) audit(null, 'birthday_whatsapp_error', implode('; ', $out['errors']));
   return $out;
 }
