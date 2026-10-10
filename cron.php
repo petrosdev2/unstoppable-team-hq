@@ -5,6 +5,18 @@
 //  or by opening: https://your-site/cron.php?key=YOUR_CRON_KEY
 // ============================================================
 declare(strict_types=1);
+// Show a readable error instead of a blank "Error 500"
+register_shutdown_function(function () {
+  $e = error_get_last();
+  if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+    if (!headers_sent()) { http_response_code(500); header('Content-Type: application/json; charset=utf-8'); }
+    echo json_encode(['error' => $e['message'], 'file' => basename($e['file']), 'line' => $e['line']]);
+  }
+});
+set_exception_handler(function (Throwable $e) {
+  if (!headers_sent()) { http_response_code(500); header('Content-Type: application/json; charset=utf-8'); }
+  echo json_encode(['error' => $e->getMessage(), 'file' => basename($e->getFile()), 'line' => $e->getLine()]);
+});
 require __DIR__ . '/lib.php';
 header('Content-Type: application/json; charset=utf-8');
 
