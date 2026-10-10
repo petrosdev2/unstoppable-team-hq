@@ -31,7 +31,7 @@ $digest = [];
 foreach ($offices as $o) {
   $oid = (int)$o['id'];
   $birthdays = array_map(function ($r) { $d = json_decode((string)$r['data'], true) ?: []; return ['name' => $r['full_name'], 'phone' => $d['phone'] ?? '']; },
-    q("SELECT full_name,data FROM members WHERE office_id=? AND status='active' AND DATE_FORMAT(dob,'%m-%d')=?", [$oid, $md])->fetchAll());
+    q("SELECT full_name,data FROM members WHERE office_id=? AND status='active' AND MONTH(dob)=? AND DAY(dob)=?", [$oid, (int)date('n'), (int)date('j')])->fetchAll());
   $noSignOut = array_column(q('SELECT m.full_name FROM attendance a JOIN members m ON m.id=a.member_id WHERE a.office_id=? AND a.date=? AND a.sign_in IS NOT NULL AND a.sign_out IS NULL', [$oid, $y])->fetchAll(), 'full_name');
   $yIn = (int)q('SELECT COUNT(*) c FROM attendance WHERE office_id=? AND date=? AND sign_in IS NOT NULL', [$oid, $y])->fetch()['c'];
   $active = (int)q("SELECT COUNT(*) c FROM members WHERE office_id=? AND status='active'", [$oid])->fetch()['c'];

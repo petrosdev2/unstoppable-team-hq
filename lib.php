@@ -257,7 +257,7 @@ function sendBirthdayWishes(): array {
   if (empty($cfg['onBirthday'])) return ['off' => true];
   $out = ['whatsapp' => 0, 'email' => 0, 'errors' => [], 'people' => [], 'alreadySent' => 0];
   $done = jsonSetting('birthday_sent', []); if (!is_array($done)) $done = [];
-  $rows = q("SELECT m.id, m.full_name, m.data, o.name office FROM members m JOIN offices o ON o.id=m.office_id WHERE m.status='active' AND DATE_FORMAT(m.dob,'%m-%d')=?", [date('m-d')])->fetchAll();
+  $rows = q("SELECT m.id, m.full_name, m.data, o.name office FROM members m JOIN offices o ON o.id=m.office_id WHERE m.status='active' AND MONTH(m.dob)=? AND DAY(m.dob)=?", [(int)date('n'), (int)date('j')])->fetchAll();
   foreach ($rows as $r) {
     if (($done[(string)$r['id']] ?? '') === today()) { $out['alreadySent']++; continue; }
     $d = json_decode((string)$r['data'], true) ?: [];
