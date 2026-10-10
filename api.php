@@ -198,6 +198,18 @@ try {
       $id = (int)db()->lastInsertId();
       $on = q('SELECT name FROM offices WHERE id=?', [$oid])->fetch();
       notify('new_member', ['member' => $name, 'phone' => $data['phone'], 'officeId' => $oid, 'office' => $on['name'] ?? '', 'stage' => $stage]);
+      $wPhone = (string)$data['phone']; $wEmail = (string)$data['email']; $wOffice = $on['name'] ?? '';
+      afterResponse(fn() => messageMember('welcome', $name, $wPhone, $wEmail, $wOffice));
+    }
+    if ($old && $status === 'active') {
+      $R = ranks(); $oi = array_search($old['rank_name'], $R, true); $ni = array_search($rank, $R, true);
+      $levelUp = null;
+      if ($rank !== '' && $ni !== false && ($oi === false || $ni > $oi)) $levelUp = $rank;
+      elseif (array_search($stage, STAGES, true) > array_search($old['stage'], STAGES, true)) $levelUp = $stage;
+      if ($levelUp) {
+        $pOffice = (q('SELECT name FROM offices WHERE id=?', [$oid])->fetch()['name'] ?? ''); $pPhone = (string)$data['phone']; $pEmail = (string)$data['email'];
+        afterResponse(fn() => messageMember('promotion', $name, $pPhone, $pEmail, $pOffice, $levelUp));
+      }
     }
     audit($u, $old ? 'member_edit' : 'member_add', $name . ($old && $old['rank_name'] !== $rank ? " (rank {$old['rank_name']} → $rank)" : '') . ($old && $old['stage'] !== $stage ? " (stage {$old['stage']} → $stage)" : ''), $oid);
     out(['member' => memberRow(q('SELECT * FROM members WHERE id=?', [$id])->fetch())]);
@@ -549,6 +561,8 @@ try {
         'waTemplate' => $tpl, 'waLang' => preg_replace('/[^A-Za-z_]/', '', str($al['waLang'] ?? 'en', 10)) ?: 'en',
         'onLate' => !empty($al['onLate']), 'onNewMember' => !empty($al['onNewMember']), 'onDigest' => !empty($al['onDigest']),
         'waBusinessId' => preg_replace('/\D/', '', (string)($al['waBusinessId'] ?? '')),
+        'onWelcome' => !empty($al['onWelcome']), 'onAbsentMsg' => !empty($al['onAbsentMsg']), 'onPromotion' => !empty($al['onPromotion']),
+        'welcomeTemplate' => $cur['welcomeTemplate'], 'absentTemplate' => $cur['absentTemplate'], 'promoTemplate' => $cur['promoTemplate'],
         'onBirthday' => !empty($al['onBirthday']), 'bdTemplate' => (preg_replace('/[^a-z0-9_]/', '', strtolower(str($al['bdTemplate'] ?? 'birthday_wish', 100))) ?: 'birthday_wish')];
       setSetting('alerts', json_encode($new, JSON_UNESCAPED_UNICODE));
     }

@@ -150,7 +150,8 @@ function mb_strimwidth_safe(string $s, int $n): string { return function_exists(
 function alertConfig(): array {
   $c = jsonSetting('alerts', []);
   return array_merge(['emails' => '', 'from' => '', 'waNumbers' => '', 'waPhoneId' => '', 'waToken' => '', 'waTemplate' => 'team_alert', 'waLang' => 'en',
-    'onLate' => true, 'onNewMember' => true, 'onDigest' => true, 'onBirthday' => true, 'bdTemplate' => 'birthday_wish', 'waBusinessId' => ''], is_array($c) ? $c : []);
+    'onLate' => true, 'onNewMember' => true, 'onDigest' => true, 'onBirthday' => true, 'bdTemplate' => 'birthday_wish', 'waBusinessId' => '',
+    'onWelcome' => true, 'welcomeTemplate' => 'welcome_member', 'onAbsentMsg' => true, 'absentTemplate' => 'absent_followup', 'onPromotion' => true, 'promoTemplate' => 'promotion_congrats'], is_array($c) ? $c : []);
 }
 
 function formatAlert(string $event, array $d): array {
@@ -225,6 +226,15 @@ function waTemplateDefs(array $cfg): array {
     ['name' => $cfg['waTemplate'] ?: 'team_alert', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'UTILITY',
      'components' => [['type' => 'BODY', 'text' => 'Hello, here is your Unstoppable Team HQ update: {{1}}. This is an automated message from the team app.',
        'example' => ['body_text' => [['Kemi signed in late at 09:40 at Unstoppable Team Ondo']]]]]],
+    ['name' => $cfg['welcomeTemplate'] ?: 'welcome_member', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'MARKETING',
+     'components' => [['type' => 'BODY', 'text' => "Welcome to Unstoppable Team, {{1}}! 🎉 We're glad to have you at {{2}}. Show up daily, stay teachable, and let's grow together.",
+       'example' => ['body_text' => [['Bola', 'Unstoppable Team Ondo']]]]]],
+    ['name' => $cfg['absentTemplate'] ?: 'absent_followup', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'UTILITY',
+     'components' => [['type' => 'BODY', 'text' => "Hi {{1}}, we've missed you at {{2}} these past few days. Is everything okay? We'd love to see you back. Reply if you need any help.",
+       'example' => ['body_text' => [['Bola', 'Unstoppable Team Ondo']]]]]],
+    ['name' => $cfg['promoTemplate'] ?: 'promotion_congrats', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'MARKETING',
+     'components' => [['type' => 'BODY', 'text' => "Congratulations, {{1}}! 🏆 You've reached {{2}}. Your hard work is paying off. Keep going, the whole team is proud of you.",
+       'example' => ['body_text' => [['Bola', 'Senior Manager']]]]]],
     ['name' => $cfg['bdTemplate'] ?: 'birthday_wish', 'language' => $cfg['waLang'] ?: 'en', 'category' => 'MARKETING',
      'components' => [['type' => 'BODY', 'text' => 'Happy birthday, {{1}}! 🎉 The whole Unstoppable Team celebrates you today. Wishing you joy, good health and a great year of growth.',
        'example' => ['body_text' => [['Bola']]]]]],
@@ -321,22 +331,72 @@ function deliverAlert(string $event, array $data): array {
   return $r;
 }
 
+/* Run a job after the reply has gone back to the user */
+function afterResponse(callable $job): void {
+  static $registered = false;
+  $GLOBALS['__uthq_jobs'][] = $job;
+  if ($registered) return;
+  $registered = true;
+  register_shutdown_function(function () {
+    if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+    elseif (function_exists('litespeed_finish_request')) @litespeed_finish_request();
+    ignore_user_abort(true);
+    foreach ($GLOBALS['__uthq_jobs'] ?? [] as $j) { try { $j(); } catch (Throwable $x) { error_log('UTHQ job: ' . $x->getMessage()); } }
+  });
+}
+
+/* Message one member by WhatsApp (template) and email. $kind: welcome | absent | promotion */
+function messageMember(string $kind, string $fullName, string $phone, string $email, string $office, string $extra = ''): array {
+  $cfg = alertConfig();
+  $map = ['welcome' => ['onWelcome', 'welcomeTemplate'], 'absent' => ['onAbsentMsg', 'absentTemplate'], 'promotion' => ['onPromotion', 'promoTemplate']];
+  if (!isset($map[$kind]) || empty($cfg[$map[$kind][0]])) return ['off' => true];
+  $first = trim(explode(' ', trim($fullName))[0]) ?: $fullName;
+  $p2 = $kind === 'promotion' ? $extra : $office;
+  $texts = [
+    'welcome' => ["Welcome to Unstoppable Team, $first! 🎉", "Welcome to Unstoppable Team, $first! 🎉\n\nWe're glad to have you at $office. Show up daily, stay teachable, and let's grow together."],
+    'absent' => ["We've missed you, $first", "Hi $first,\n\nWe've missed you at $office these past few days. Is everything okay? We'd love to see you back. Reply if you need any help."],
+    'promotion' => ["Congratulations, $first! 🏆", "Congratulations, $first! 🏆\n\nYou've reached $extra. Your hard work is paying off. Keep going, the whole team is proud of you."],
+  ];
+  $r = ['whatsapp' => null, 'email' => null];
+  if ($phone !== '' && $cfg['waPhoneId'] !== '' && $cfg['waToken'] !== '') {
+    $e = sendWaTemplate($cfg, normPhone($phone), $cfg[$map[$kind][1]], [$first, $p2]);
+    $r['whatsapp'] = $e === '' ? 'sent' : $e;
+    if ($e !== '') audit(null, "{$kind}_whatsapp_error", "$fullName: $e");
+  }
+  if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $res = sendAlertEmail(array_merge($cfg, ['emails' => $email]), $texts[$kind][0], $texts[$kind][1] . "\n\nWith love,\nUnstoppable Team");
+    $r['email'] = !empty($res['sent']) ? 'sent' : 'failed';
+  }
+  return $r;
+}
+
+/* "We missed you" to members absent 3 session days; at most once a week per member */
+function sendAbsentMessages(): array {
+  $cfg = alertConfig();
+  if (empty($cfg['onAbsentMsg'])) return ['off' => true];
+  $sent = jsonSetting('absent_msg_sent', []); if (!is_array($sent)) $sent = [];
+  $week = date('Y-m-d', strtotime(today() . ' -7 day')); $n = 0; $names = [];
+  $offices = [];
+  foreach (q('SELECT id,name FROM offices')->fetchAll() as $o) $offices[(int)$o['id']] = $o['name'];
+  foreach (absenceStreaks(array_keys($offices)) as $a) {
+    $mid = (string)$a['memberId'];
+    if (isset($sent[$mid]) && $sent[$mid] > $week) continue;
+    $m = q('SELECT full_name,data FROM members WHERE id=?', [$a['memberId']])->fetch(); if (!$m) continue;
+    $d = json_decode((string)$m['data'], true) ?: [];
+    $r = messageMember('absent', $m['full_name'], (string)($d['phone'] ?? ''), (string)($d['email'] ?? ''), $offices[$a['officeId']] ?? '');
+    if (($r['whatsapp'] ?? '') === 'sent' || ($r['email'] ?? '') === 'sent') { $sent[$mid] = today(); $n++; $names[] = $m['full_name']; }
+  }
+  foreach ($sent as $k => $v) if ($v < date('Y-m-d', strtotime(today() . ' -60 day'))) unset($sent[$k]);
+  setSetting('absent_msg_sent', json_encode($sent));
+  return ['sent' => $n, 'people' => $names];
+}
+
 /* Send now (sync=true) or after the reply has gone back to the user (so check-in stays fast) */
 function notify(string $event, array $data, bool $sync = false) {
   $cfg = alertConfig();
   if (($event === 'late_signin' && !$cfg['onLate']) || ($event === 'new_member' && !$cfg['onNewMember']) || ($event === 'daily_digest' && !$cfg['onDigest'])) return ['off' => true];
   if ($sync) return deliverAlert($event, $data);
-  static $queued = false;
-  $GLOBALS['__uthq_alerts'][] = [$event, $data];
-  if (!$queued) {
-    $queued = true;
-    register_shutdown_function(function () {
-      if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
-      elseif (function_exists('litespeed_finish_request')) @litespeed_finish_request();
-      ignore_user_abort(true);
-      foreach ($GLOBALS['__uthq_alerts'] ?? [] as [$e, $d]) { try { deliverAlert($e, $d); } catch (Throwable $x) { error_log('UTHQ alert: ' . $x->getMessage()); } }
-    });
-  }
+  afterResponse(fn() => deliverAlert($event, $data));
   return ['queued' => true];
 }
 
