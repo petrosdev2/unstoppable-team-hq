@@ -159,4 +159,35 @@ return [
   token_hash CHAR(64) NOT NULL,
   expires_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS disc_transfers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  member_id INT NOT NULL,
+  from_office INT NOT NULL,
+  to_office INT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  status VARCHAR(12) NOT NULL DEFAULT 'scheduled',
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  created_by INT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX (member_id), INDEX (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS disc_suspensions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  member_id INT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NULL,
+  reason VARCHAR(255) NOT NULL DEFAULT '',
+  lifted_by INT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX (member_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+"CREATE TABLE IF NOT EXISTS disc_paid (
+  member_id INT NOT NULL,
+  date DATE NOT NULL,
+  kind CHAR(1) NOT NULL,
+  paid_at DATETIME NOT NULL,
+  by_user INT NULL,
+  PRIMARY KEY (member_id, date, kind)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 ];

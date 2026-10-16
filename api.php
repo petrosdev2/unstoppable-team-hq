@@ -63,13 +63,19 @@ try {
   /* ---------- main data load ---------- */
   case 'bootstrap':
     $u = need();
+    try { discProcess(); } catch (Throwable $e) { error_log('UTHQ discipline: ' . $e->getMessage()); }
     $ids = officeIds($u);
     $offices = array_map('officeRow', q('SELECT * FROM offices WHERE id IN (' . inList($ids) . ') ORDER BY id')->fetchAll());
     $members = array_map('memberRow', q('SELECT * FROM members WHERE office_id IN (' . inList($ids) . ') ORDER BY full_name')->fetchAll());
     $t = today();
     $fu = [];
     foreach (q('SELECT f.member_id, f.date, f.by_name FROM followups f JOIN (SELECT member_id, MAX(id) mid FROM followups WHERE office_id IN (' . inList($ids) . ') GROUP BY member_id) x ON x.mid=f.id')->fetchAll() as $r) $fu[(int)$r['member_id']] = ['date' => $r['date'], 'by' => $r['by_name']];
-    $settings = ['trainingTypes' => trainingTypes(), 'fineRule' => fineRule(), 'kioskPhoto' => setting('kiosk_photo', '0') === '1'];
+    $onTransfer = [];
+    foreach (q("SELECT member_id, from_office, to_office, end_date FROM disc_transfers WHERE status='active'")->fetchAll() as $t) $onTransfer[(int)$t['member_id']] = ['from' => (int)$t['from_office'], 'to' => (int)$t['to_office'], 'end' => $t['end_date']];
+    foreach ($members as &$mm) if (isset($onTransfer[$mm['id']])) $mm['transfer'] = $onTransfer[$mm['id']];
+    unset($mm);
+    $settings = ['trainingTypes' => trainingTypes(), 'fineRule' => fineRule(), 'kioskPhoto' => setting('kiosk_photo', '0') === '1', 'discipline' => discRules(),
+      'allOffices' => array_map(fn($o) => ['id' => (int)$o['id'], 'name' => $o['name']], q('SELECT id, name FROM offices ORDER BY id')->fetchAll())];
     if ($u['role'] === 'admin') { $ac = alertConfig(); $ac['hasToken'] = $ac['waToken'] !== ''; unset($ac['waToken']); $settings['alerts'] = $ac; $settings['webhookUrl'] = (string)setting('webhook_url', ''); $settings['cronKey'] = (string)setting('cron_key', ''); }
     out(['user' => publicUser($u), 'offices' => $offices, 'ranks' => ranks(), 'members' => $members,
          'today' => $t, 'now' => now(), 'tz' => APP_TZ, 'att' => attQuery($ids, $t, $t), 'lastFollowups' => $fu, 'settings' => $settings]);
@@ -88,6 +94,7 @@ try {
     $m = q('SELECT * FROM members WHERE id=?', [(int)($in['memberId'] ?? 0)])->fetch();
     if (!$m) fail('Member not found.');
     needOffice($u, $m['office_id']);
+    if ($m['status'] === 'suspended') fail('This member is suspended. Only the admin can lift it.');
     if ($m['status'] !== 'active') fail('This member is marked inactive.');
     if ($m['pin_hash'] && !password_verify((string)($in['pin'] ?? ''), $m['pin_hash'])) fail("That PIN doesn't match. Try again.");
     $t = today();
@@ -167,6 +174,7 @@ try {
     $stage = in_array($p['stage'] ?? '', STAGES, true) ? $p['stage'] : 'New Member';
     $rank = in_array($p['rank'] ?? '', ranks(), true) ? $p['rank'] : '';
     $status = ($p['status'] ?? '') === 'inactive' ? 'inactive' : 'active';
+    if ($old && $old['status'] === 'suspended') $status = 'suspended';
     $joined = validDate($p['joinedDate'] ?? null); $dob = validDate($p['dob'] ?? null);
     $data = [];
     foreach (DATA_FIELDS as $f) {
@@ -592,6 +600,92 @@ try {
     if (!$r['ok']) fail("Meta said: {$r['error']}");
     foreach (($r['data']['data'] ?? []) as $t) $st[] = ['name' => $t['name'], 'status' => $t['status'] ?? '', 'category' => $t['category'] ?? '', 'language' => $t['language'] ?? ''];
     out(['created' => $results, 'templates' => $st]);
+
+  /* ---------- discipline ---------- */
+  case 'disc_overview':
+    $u = need();
+    discProcess(true);
+    out(discOverview(officeIds($u)));
+
+  case 'disc_fines':
+    $u = need();
+    $mo = (string)($in['month'] ?? ''); if (!preg_match('/^\d{4}-\d{2}$/', $mo)) fail('Pick a month.');
+    out(discFines(officeIds($u), $mo));
+
+  case 'disc_pay':
+    $u = need();
+    $m = q('SELECT id, office_id, full_name FROM members WHERE id=?', [(int)($in['memberId'] ?? 0)])->fetch();
+    if (!$m) fail('Member not found.');
+    needOffice($u, $m['office_id']);
+    $paid = !empty($in['paid']); $n = 0;
+    foreach ((array)($in['items'] ?? []) as $it) {
+      $d = validDate($it['date'] ?? null); $k = ($it['kind'] ?? '') === 'late' ? 'L' : (($it['kind'] ?? '') === 'absent' ? 'A' : '');
+      if (!$d || $k === '') continue;
+      if ($paid) q('REPLACE INTO disc_paid (member_id, date, kind, paid_at, by_user) VALUES (?,?,?,?,?)', [$m['id'], $d, $k, now(), $u['id']]);
+      else q('DELETE FROM disc_paid WHERE member_id=? AND date=? AND kind=?', [$m['id'], $d, $k]);
+      $n++;
+    }
+    audit($u, $paid ? 'fine_paid' : 'fine_unpaid', "{$m['full_name']}: $n fine(s)", $m['office_id']);
+    out(['ok' => true]);
+
+  case 'disc_transfer':
+    $u = need();
+    $m = q('SELECT id, office_id, full_name, status FROM members WHERE id=?', [(int)($in['memberId'] ?? 0)])->fetch();
+    if (!$m) fail('Member not found.');
+    needOffice($u, $m['office_id']);
+    if ($m['status'] !== 'active') fail('Only active members can be transferred.');
+    if (q("SELECT 1 FROM disc_transfers WHERE member_id=? AND status IN ('scheduled','active')", [$m['id']])->fetch()) fail('This member already has a transfer.');
+    $to = (int)($in['toOffice'] ?? 0);
+    if ($to === (int)$m['office_id'] || !q('SELECT 1 FROM offices WHERE id=?', [$to])->fetch()) fail('Pick a different office.');
+    $start = validDate($in['start'] ?? null) ?? addDays(today(), 1);
+    if ($start < today()) fail('The start date can\'t be in the past.');
+    $r = discRules(); $end = addDays($start, (int)$r['transferDays'] - 1);
+    q("INSERT INTO disc_transfers (member_id, from_office, to_office, start_date, end_date, status, note, created_by, created_at) VALUES (?,?,?,?,?,'scheduled',?,?,?)",
+      [$m['id'], $m['office_id'], $to, $start, $end, str($in['note'] ?? ''), $u['id'], now()]);
+    audit($u, 'transfer_approved', "{$m['full_name']} → office $to from $start to $end", $m['office_id']);
+    discProcess(true);
+    out(['ok' => true, 'start' => $start, 'end' => $end]);
+
+  case 'disc_transfer_cancel':
+    $u = need();
+    $t = q('SELECT * FROM disc_transfers WHERE id=?', [(int)($in['id'] ?? 0)])->fetch();
+    if (!$t || !in_array($t['status'], ['scheduled', 'active'], true)) fail('Nothing to cancel.');
+    if (!canOffice($u, $t['from_office']) && !canOffice($u, $t['to_office'])) fail('You can only work with your own office.', 403);
+    q("UPDATE disc_transfers SET status='cancelled', end_date=? WHERE id=?", [max($t['start_date'], addDays(today(), -1)), $t['id']]);
+    if ($t['status'] === 'active') q('UPDATE members SET office_id=? WHERE id=?', [$t['from_office'], $t['member_id']]);
+    audit($u, 'transfer_cancelled', "Transfer #{$t['id']}", $t['from_office']);
+    out(['ok' => true]);
+
+  case 'disc_lift':
+    $a2 = admin();
+    $m = q('SELECT id, full_name, office_id, status FROM members WHERE id=?', [(int)($in['memberId'] ?? 0)])->fetch();
+    if (!$m || $m['status'] !== 'suspended') fail('This member isn\'t suspended.');
+    q("UPDATE members SET status='active' WHERE id=?", [$m['id']]);
+    q('UPDATE disc_suspensions SET end_date=?, lifted_by=? WHERE member_id=? AND end_date IS NULL', [today(), $a2['id'], $m['id']]);
+    audit($a2, 'suspension_lifted', $m['full_name'], $m['office_id']);
+    out(['ok' => true]);
+
+  case 'disc_suspend':
+    $a2 = admin();
+    $m = q('SELECT id, full_name, office_id, status FROM members WHERE id=?', [(int)($in['memberId'] ?? 0)])->fetch();
+    if (!$m || $m['status'] === 'suspended') fail('This member is already suspended.');
+    q("UPDATE members SET status='suspended' WHERE id=?", [$m['id']]);
+    q('INSERT INTO disc_suspensions (member_id, start_date, reason, created_at) VALUES (?,?,?,?)', [$m['id'], today(), str($in['reason'] ?? 'Suspended by admin'), now()]);
+    audit($a2, 'suspended', $m['full_name'] . ' (by admin)', $m['office_id']);
+    out(['ok' => true]);
+
+  case 'disc_rules_save':
+    $a2 = admin();
+    $c = discRules(); $x = (array)($in['rules'] ?? []);
+    $num = fn($k, $min) => max($min, (int)($x[$k] ?? $c[$k]));
+    $new = ['enabled' => !empty($x['enabled']), 'startDate' => validDate($x['startDate'] ?? null) ?? $c['startDate'],
+      'lateFine' => max(0, (float)($x['lateFine'] ?? $c['lateFine'])), 'absentFine' => max(0, (float)($x['absentFine'] ?? $c['absentFine'])),
+      'ranks' => array_values(array_intersect((array)($x['ranks'] ?? []), ranks())),
+      'listThreshold' => $num('listThreshold', 0), 'listDays' => $num('listDays', 1), 'transferAbsences' => $num('transferAbsences', 1),
+      'transferWindow' => $num('transferWindow', 1), 'transferDays' => $num('transferDays', 1)];
+    setSetting('discipline', json_encode($new, JSON_UNESCAPED_UNICODE));
+    audit($a2, 'discipline_rules', json_encode($new, JSON_UNESCAPED_UNICODE));
+    out(['ok' => true]);
 
   case 'audit_list':
     admin();

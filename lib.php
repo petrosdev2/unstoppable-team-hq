@@ -112,7 +112,7 @@ function nextCode(int $oid): string {
 
 
 /* ---------- settings, migrations, audit, notifications ---------- */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const DEFAULT_TRAINING_TYPES = ['Distributor Training', 'Senior Manager Training', 'Director Training', 'Team Leader Training', 'Guest Training'];
 const IN_TYPES = ['earning', 'other_in'];
 
@@ -162,6 +162,9 @@ function formatAlert(string $event, array $d): array {
   } elseif ($event === 'new_member') {
     $subject = "New member: {$d['member']}";
     $t = "🎉 NEW MEMBER\n{$d['member']}" . (!empty($d['phone']) ? " ({$d['phone']})" : '') . (!empty($d['office']) ? "\nOffice: {$d['office']}" : '') . "\nStage: {$d['stage']}";
+  } elseif ($event === 'suspension') {
+    $subject = "Suspended: {$d['member']}";
+    $t = "⛔ SUSPENDED\n{$d['member']} missed {$d['missed']} during their transfer to {$d['office']} and is now suspended.\nOnly the admin can lift the suspension.";
   } elseif ($event === 'test') {
     $subject = 'Test from Unstoppable Team HQ';
     $t = '✅ ' . ($d['message'] ?? 'Test message');
@@ -175,6 +178,7 @@ function formatAlert(string $event, array $d): array {
       $abs = $o['absent3Days'] ?? [];
       $p .= $abs ? "\n⚠️ Absent 3 days (please follow up):\n" . implode("\n", array_map(fn($a) => '• ' . $a['name'] . ($a['phone'] ? ' – ' . $a['phone'] : ''), $abs)) : "\nNo one absent 3 days in a row 👍";
       if (!empty($o['birthdaysToday'])) $p .= "\n🎂 Birthday today: " . implode(', ', array_column($o['birthdaysToday'], 'name'));
+      if (!empty($o['transferDue'])) $p .= "\n🔁 Due for transfer (" . $o['transferRule'] . "): " . implode(', ', array_map(fn($x) => $x['name'] . ' (' . $x['absences'] . ')', $o['transferDue']));
       $parts[] = $p;
     }
     $subject = "Daily report $date";
@@ -427,3 +431,5 @@ function absenceStreaks(array $officeIds, int $days = 3): array {
   }
   return $out;
 }
+
+require_once __DIR__ . '/discipline.php';

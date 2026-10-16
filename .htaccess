@@ -2,7 +2,7 @@ Options -Indexes
 DirectoryIndex index.html
 
 # Never serve the settings file or the schema
-<FilesMatch "^(config|schema|lib)\.php$">
+<FilesMatch "^(config|schema|lib|discipline)\.php$">
   Require all denied
 </FilesMatch>
 

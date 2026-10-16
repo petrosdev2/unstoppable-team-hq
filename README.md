@@ -66,3 +66,11 @@ Sign-in times use Nigerian time (Africa/Lagos). To change it, edit `APP_TZ` in `
 
 The database upgrades itself automatically the first time the new version runs.
 `cron.php` sends the daily digest; protect its key and don't share the URL.
+
+## Discipline rules (version 3)
+Discipline page (all leaders) + Settings → Discipline rules (admin).
+- Fines: ₦1,000 per late sign-in, ₦1,500 per missed day, for Full Distributor–Executive Manager (editable). Leaders mark them paid.
+- List: everyone absent more than 3 times in the last 30 days.
+- Transfer: 5 absences within 14 days → flagged; leader/admin picks an office and approves; member moves to that office's check-in for 14 days, then returns home automatically.
+- Missing any day during the transfer → suspended until the admin lifts it. Suspended members can't sign in and aren't fined.
+- Excused days never count. Nothing before the rules' start date counts. Today's day is counted the next morning.

@@ -9,6 +9,7 @@ const ICONS={
  prospects:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5 1.3 0 2.5.3 3.5 1"/><path d="M17 13v8M13 17h8"/></svg>',
  trainings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8l10-5 10 5-10 5z"/><path d="M6 10.5V16c2 2 10 2 12 0v-5.5"/></svg>',
  performance:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18"/><rect x="5" y="11" width="3" height="7" rx="1"/><rect x="10.5" y="7" width="3" height="11" rx="1"/><rect x="16" y="4" width="3" height="14" rx="1"/></svg>',
+ discipline:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M12 8v5M12 16v.01"/></svg>',
  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
 };
 /* ===== Unstoppable Team HQ — front end (talks to api.php) ===== */
@@ -89,10 +90,10 @@ function shell(){
  if(S.resetToken)return resetView();
  if(!S.me)return loginView();
  if(!S.offices.length&&!isAdmin())return`<div class="main"><div class="card" style="max-width:520px;margin:12vh auto"><h2>No office assigned</h2><p class="muted">Your account isn't linked to an office yet. Ask the team admin to assign you.</p><button class="btn" data-act="logout">Log out</button></div></div>`;
- const nav=[["dashboard","Dashboard"],["kiosk","Check-in"],["attendance","Attendance"],["members","Members"],["prospects","Prospects"],["trainings","Trainings"],["performance","Business"]];
+ const nav=[["dashboard","Dashboard"],["kiosk","Check-in"],["attendance","Attendance"],["members","Members"],["prospects","Prospects"],["trainings","Trainings"],["performance","Business"],["discipline","Discipline"]];
  if(isAdmin())nav.push(["leaders","Team"],["finance","Finance"],["settings","Settings"]);
  const links=nav.map(([k,l])=>`<a data-act="nav" data-v="${k}" class="${S.view===k?"on":""}">${ICONS[k]}<span>${l}</span></a>`).join("");
- const views={dashboard:dashView,kiosk:kioskView,attendance:attView,members:membersView,prospects:prospectsView,trainings:trainingsView,performance:perfView,leaders:teamView,finance:finView,settings:settingsView};
+ const views={dashboard:dashView,kiosk:kioskView,attendance:attView,members:membersView,prospects:prospectsView,trainings:trainingsView,performance:perfView,discipline:discView,leaders:teamView,finance:finView,settings:settingsView};
  const adminOnly=["leaders","finance","settings"];
  const v=(views[S.view]&&(!adminOnly.includes(S.view)||isAdmin()))?views[S.view]:dashView;
  return`<div class="layout"><aside class="side"><div class="brand">Unstoppable Team<small>${isAdmin()?"Admin · all offices":esc((S.offices[0]||{}).name||"Team leader")}</small></div><nav class="nav">${links}</nav>
@@ -108,7 +109,7 @@ function officePickerSingle(oid,id){return S.offices.length>1?`<select id="${id}
 
 /* ---------- dashboard ---------- */
 function dashView(){
- const ids=scopeIds(),os=S.offices.filter(o=>ids.includes(o.id)),ms=visibleMembers().filter(m=>m.status!=="inactive");
+ const ids=scopeIds(),os=S.offices.filter(o=>ids.includes(o.id)),ms=visibleMembers().filter(m=>m.status==="active");
  if(!S.recent||Date.now()-S.recentAt>120000)loadRecent();
  const cards=os.map(o=>{const doc=S.today[o.id]||{records:{}},recs=doc.records,om=ms.filter(m=>m.officeId===o.id);
   let inNow=0,came=0,late=0;om.forEach(m=>{const r=recs[m.id];const st=recStatus(r,o);if(st==="present"||st==="late"){came++;if(!r.out)inNow++}if(st==="late")late++});
@@ -148,7 +149,7 @@ function absenceAlerts(ms){if(!S.recent)return null;const out=[];
 function kioskView(){
  const oid=singleOffice(),o=officeById(oid);if(!o)return'<div class="card empty">No office available.</div>';
  const doc=S.today[oid]||{records:{}},recs=doc.records,session=isSessionDay(S.todayStr,doc);
- const ms=S.members.filter(m=>m.officeId===oid&&m.status!=="inactive");
+ const ms=S.members.filter(m=>m.officeId===oid&&m.status==="active");
  const q=S.kq.trim().toLowerCase();const shown=q?ms.filter(m=>(m.fullName+" "+(m.code||"")).toLowerCase().includes(q)):ms;
  let inNow=0,came=0;ms.forEach(m=>{const r=recs[m.id];if(r&&r.in){came++;if(!r.out)inNow++}});
  const head=`<div class="kiosk-head"><div><div class="clock" id="clock">--:--:--</div><div class="date">${dayOf(S.todayStr).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})}</div></div><div><div class="office">${esc(o.name)}</div><div class="counts">${inNow} in now · ${came} came today · ${ms.length} members</div></div></div>`;
@@ -157,7 +158,7 @@ function kioskView(){
  return`${top}${head}<input id="kq" class="bigsearch" data-act="kq" placeholder="Type your name or member code" value="${esc(S.kq)}" autocomplete="off">
  <div class="tiles">${shown.map(m=>{const r=recs[m.id];const cls=r&&r.in&&!r.out?"in":r&&r.out?"out":"";
   const sub=r&&r.out?`Out at ${hm(r.out)}`:r&&r.in?`In since ${hm(r.in)}`:r&&r.excused?"Excused":"Not in yet";
-  return`<button class="tile ${cls}" data-act="kioskTap" data-id="${m.id}">${avatar(m)}<div><b>${esc(m.fullName)}</b><span>${esc(sub)}</span></div></button>`}).join("")||'<div class="empty">No matching members.</div>'}</div>`;
+  return`<button class="tile ${cls}" data-act="kioskTap" data-id="${m.id}">${avatar(m)}<div><b>${esc(m.fullName)}</b><span>${esc(sub)}${m.transfer?" · on transfer":""}</span></div></button>`}).join("")||'<div class="empty">No matching members.</div>'}</div>`;
 }
 function kioskModal(m){const r=(S.today[m.officeId]||{records:{}}).records[m.id];const action=!r||!r.in?"in":!r.out?"out":"done";
  return`<div class="scrim" data-act="closeBg"><div class="modal narrow" role="dialog" aria-modal="true"><div class="mhead"><div class="name-cell">${avatar(m)}<div><h2>${esc(m.fullName)}</h2><div class="small muted">${esc(m.code||"")}</div></div></div><button class="x" data-act="close" aria-label="Close">×</button></div>
@@ -177,7 +178,7 @@ function attDay(o){
  let doc;if(S.att.date===S.todayStr)doc=S.today[o.id]||{session:false,records:{}};else{const c=cached(`${o.id}:${S.att.date}`,S.att.date,S.att.date,o.id);if(c==="loading")return'<div class="card empty">Loading…</div>';doc=dayDoc(c,S.att.date,o.id)}
  if(!isSessionDay(S.att.date,doc))return`<div class="card empty"><p>No session on this weekend day.</p><button class="btn" data-act="openSession" data-o="${o.id}" data-d="${esc(S.att.date)}">Open a session for this day</button></div>`;
  const recs=doc.records;
- const ms=S.members.filter(m=>m.officeId===o.id&&(m.status!=="inactive"||recs[m.id])&&(!m.joinedDate||m.joinedDate<=S.att.date));
+ const ms=S.members.filter(m=>m.officeId===o.id&&(m.status==="active"||recs[m.id])&&(!m.joinedDate||m.joinedDate<=S.att.date));
  const c={present:0,late:0,absent:0,excused:0};ms.forEach(m=>c[recStatus(recs[m.id],o)]++);
  return`<div class="row" style="margin-bottom:12px">${Object.entries(c).map(([k,v])=>`${statusTag[k]} <b>${v}</b>`).join("&nbsp;&nbsp;")}<span class="muted small">Late after ${esc(o.lateAfter)}</span></div>
  <div class="tbl-wrap"><table><thead><tr><th>Member</th><th>Status</th><th>Signed in</th><th>Signed out</th><th>Hours</th><th>Note</th><th>Last edited by</th><th></th></tr></thead><tbody>
@@ -190,7 +191,7 @@ function monthSummary(o,days,month){
  for(let i=1;i<=last;i++){const s=`${month}-${pad(i)}`;if(s>S.todayStr)break;if(isSessionDay(s,dayDoc(days,s,o.id)))sessions.push(s)}
  const rows=S.members.filter(m=>m.officeId===o.id).map(m=>{let p=0,l=0,e=0,a=0,hs=0,hn=0,due=0;sessions.forEach(s=>{if(m.joinedDate&&m.joinedDate>s)return;due++;const r=dayDoc(days,s,o.id).records[m.id];const st=recStatus(r,o);
   if(st==="present")p++;else if(st==="late"){p++;l++}else if(st==="excused")e++;else a++;const h=hours(r);if(h){hs+=h;hn++}});
-  return{m,p,l,e,a,due,avg:hn?hs/hn:null,pct:due-e>0?Math.round(p/(due-e)*100):null}}).filter(r=>r.due>0||r.m.status!=="inactive");
+  return{m,p,l,e,a,due,avg:hn?hs/hn:null,pct:due-e>0?Math.round(p/(due-e)*100):null}}).filter(r=>r.due>0||r.m.status==="active");
  return{sessions,rows}}
 function monthDays(oid,month){const last=new Date(+month.slice(0,4),+month.slice(5),0).getDate();return cached(`${oid}:${month}`,`${month}-01`,`${month}-${pad(last)}`,oid)}
 function attMonth(o){const days=monthDays(o.id,S.att.month);if(days==="loading")return'<div class="card empty">Loading…</div>';
@@ -212,7 +213,7 @@ function membersView(){const f=S.memFilter,q=S.q.trim().toLowerCase();
  return`<div class="top"><div><h1>Members</h1><p>${ms.length} shown</p></div><div class="row">${officePicker()}<button class="btn" data-act="exportMembers">Export CSV</button><button class="btn pri" data-act="newMember">Add member</button></div></div>
  <div class="row" style="margin-bottom:12px"><input id="mq" data-act="mq" placeholder="Search name, code, phone" value="${esc(S.q)}" style="flex:1;min-width:200px">
  <select data-act="mf" data-k="level" aria-label="Stage or rank"><option value="">All stages &amp; ranks</option><optgroup label="Team stage">${STAGES.map(s=>`<option value="s:${esc(s)}" ${f.level==="s:"+s?"selected":""}>${esc(s)}</option>`).join("")}</optgroup><optgroup label="NeoLife rank"><option value="r:" ${f.level==="r:"?"selected":""}>Not yet ranked</option>${ranks().map(s=>`<option value="r:${esc(s)}" ${f.level==="r:"+s?"selected":""}>${esc(s)}</option>`).join("")}</optgroup></select>
- <select data-act="mf" data-k="status" aria-label="Status"><option value="active" ${f.status==="active"?"selected":""}>Active</option><option value="inactive" ${f.status==="inactive"?"selected":""}>Inactive</option><option value="" ${!f.status?"selected":""}>Everyone</option></select></div>
+ <select data-act="mf" data-k="status" aria-label="Status"><option value="active" ${f.status==="active"?"selected":""}>Active</option><option value="inactive" ${f.status==="inactive"?"selected":""}>Inactive</option><option value="suspended" ${f.status==="suspended"?"selected":""}>Suspended</option><option value="" ${!f.status?"selected":""}>Everyone</option></select></div>
  <div class="tbl-wrap"><table><thead><tr><th>Member</th><th>Office</th><th>Stage</th><th>NeoLife rank</th><th>Phone</th><th>Sponsor</th><th>Joined</th></tr></thead><tbody>
  ${ms.map(m=>`<tr class="click" data-act="profile" data-id="${m.id}"><td><div class="name-cell">${avatar(m)}<div>${esc(m.fullName)}<div class="small muted">${esc(m.code||"")}</div></div></div></td><td>${esc((officeById(m.officeId)||{}).name||"")}</td><td>${stageTag(m.stage)}</td><td>${rankTag(m.rank)}</td><td>${esc(m.phone||"")}</td><td>${esc(sponsorName(m))}</td><td>${fmtDate(m.joinedDate)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">No members yet. Add your first member to get started.</td></tr>`}
  </tbody></table></div>`}
@@ -245,7 +246,7 @@ function memberForm(m){m=m||{};const isNew=!m.id;const defOff=m.officeId||single
   <label class="f">NeoLife rank<select name="rank"><option value="">Not yet ranked</option>${ranks().map(r=>`<option ${m.rank===r?"selected":""}>${esc(r)}</option>`).join("")}</select></label>
   <div class="f"><span class="small muted" style="font-weight:600">Tools bought (for Tools Owner)</span><div class="row"><label class="chk"><input type="checkbox" name="toolPhone" ${tools.includes("Phone")?"checked":""}> Phone</label><label class="chk"><input type="checkbox" name="toolLaptop" ${tools.includes("Laptop")?"checked":""}> Laptop</label></div></div>
   <label class="f">Date tools bought<input type="date" name="toolsDate" value="${esc(m.toolsDate||"")}"></label>
-  <label class="f">Membership<select name="status"><option value="active" ${(m.status||"active")==="active"?"selected":""}>Active</option><option value="inactive" ${m.status==="inactive"?"selected":""}>Inactive</option></select></label>
+  ${m.status==="suspended"?'<div class="f"><span class="small muted" style="font-weight:600">Membership</span><span class="tag red" style="align-self:flex-start;margin-top:6px">Suspended — only the admin can lift it</span><input type="hidden" name="status" value="active"></div>':`<label class="f">Membership<select name="status"><option value="active" ${(m.status||"active")==="active"?"selected":""}>Active</option><option value="inactive" ${m.status==="inactive"?"selected":""}>Inactive</option></select></label>`}
   <label class="f">${m.hasPin?"New check-in PIN (leave blank to keep)":"Check-in PIN (4–6 digits)"}<input name="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></label></div></fieldset>
  <fieldset><legend>Background</legend><div class="fg">
   <label class="f full">Job or occupation before joining<input name="occupation" value="${esc(m.occupation||"")}"></label>
@@ -259,8 +260,8 @@ function memberForm(m){m=m||{};const isNew=!m.id;const defOff=m.officeId||single
 function profileModal(m){const o=officeById(m.officeId)||{};const kids=S.members.filter(x=>x.id!==m.id&&(+x.sponsorId===m.id||(x.sponsorName||"").trim().toLowerCase()===m.fullName.trim().toLowerCase()));
  const dl=rows=>{const h=rows.filter(r=>r[1]!==""&&r[1]!=null).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");return h?`<dl class="dl">${h}</dl>`:'<p class="muted small">Not added.</p>'};
  const hist=[...(m.rankHistory||[]).map(h=>({d:h.date,t:h.rank})),...(m.stageHistory||[]).map(h=>({d:h.date,t:h.stage}))].sort((x,y)=>(y.d||"").localeCompare(x.d||""));
- return`<div class="scrim" data-act="closeBg"><div class="modal" role="dialog" aria-modal="true"><div class="mhead"><div class="row" style="gap:16px">${avatar(m,"lg")}<div><h1>${esc(m.fullName)}</h1><div class="muted">${esc(m.code||"")} · ${esc(o.name||"")}</div><div class="row" style="margin-top:6px">${stageTag(m.stage)}${m.rank?rankTag(m.rank):""}${m.status==="inactive"?'<span class="tag red">Inactive</span>':""}</div></div></div><button class="x" data-act="close" aria-label="Close">×</button></div>
- <div class="row"><button class="btn pri" data-act="editMember" data-id="${m.id}">Edit</button><button class="btn" data-act="logFu" data-id="${m.id}">Log follow-up</button>${isAdmin()?`<button class="btn danger" data-act="delMember" data-id="${m.id}">Delete</button>`:""}</div>
+ return`<div class="scrim" data-act="closeBg"><div class="modal" role="dialog" aria-modal="true"><div class="mhead"><div class="row" style="gap:16px">${avatar(m,"lg")}<div><h1>${esc(m.fullName)}</h1><div class="muted">${esc(m.code||"")} · ${esc(o.name||"")}</div><div class="row" style="margin-top:6px">${stageTag(m.stage)}${m.rank?rankTag(m.rank):""}${m.status==="inactive"?'<span class="tag red">Inactive</span>':""}${m.status==="suspended"?'<span class="tag red">Suspended</span>':""}${m.transfer?`<span class="tag gold">On transfer until ${fmtDate(m.transfer.end)}</span>`:""}</div></div></div><button class="x" data-act="close" aria-label="Close">×</button></div>
+ <div class="row"><button class="btn pri" data-act="editMember" data-id="${m.id}">Edit</button><button class="btn" data-act="logFu" data-id="${m.id}">Log follow-up</button>${isAdmin()&&m.status==="suspended"?`<button class="btn" data-act="discLift" data-id="${m.id}">Lift suspension</button>`:""}${isAdmin()&&m.status==="active"?`<button class="btn" data-act="discSuspend" data-id="${m.id}">Suspend</button>`:""}${isAdmin()?`<button class="btn danger" data-act="delMember" data-id="${m.id}">Delete</button>`:""}</div>
  <h3 class="section-t">Attendance history</h3><p class="small muted" style="margin:0 0 8px">Tap a month to see each day.</p><div id="profHist" class="muted small">Loading…</div>
  <h3 class="section-t">Follow-ups</h3><div id="profFu" class="muted small">Loading…</div>
  <h3 class="section-t">Business numbers</h3><div id="profPerf" class="muted small">Loading…</div>
@@ -310,7 +311,7 @@ function settingsView(){return`<div class="top"><div><h1>Settings</h1><p>Offices
  </tbody></table></div><div class="row" style="margin-top:12px"><button class="btn pri">Save offices</button></div></form>
  <form data-form="addOffice" class="row" style="margin-top:16px"><input name="name" placeholder="New office name, e.g. Unstoppable Team Lagos" required style="flex:1;min-width:220px"><button class="btn">Add office</button></form>
  <p class="small muted" style="margin-top:10px">The code goes into member IDs (UT-CODE-001). Change it before adding members.</p></div>
- <div class="card" style="margin-top:16px"><h2>NeoLife rank ladder</h2><p class="muted small">One rank per line, lowest first.</p><form data-form="ranks"><textarea name="ranks" style="min-height:260px;margin-top:10px">${esc(ranks().join("\n"))}</textarea><div class="row" style="margin-top:10px"><button class="btn pri">Save ranks</button></div></form></div>${settingsExtras()}`}
+ <div class="card" style="margin-top:16px"><h2>NeoLife rank ladder</h2><p class="muted small">One rank per line, lowest first.</p><form data-form="ranks"><textarea name="ranks" style="min-height:260px;margin-top:10px">${esc(ranks().join("\n"))}</textarea><div class="row" style="margin-top:10px"><button class="btn pri">Save ranks</button></div></form></div>${discRulesCard()}${settingsExtras()}`}
 
 
 /* ===================== NEW FEATURES ===================== */
@@ -402,7 +403,7 @@ function trainingsView(){const oid=singleOffice(),o=officeById(oid);if(!o)return
  if(!S.trCache[key]){if(!S.trLoading){S.trLoading=true;api("trainings_list",{officeId:oid,month:mo}).then(r=>{S.trCache[key]=r;S.trLoading=false;render()}).catch(e=>{S.trLoading=false;toast(e.message)})}return`<div class="top"><h1>Trainings</h1></div><div class="card empty">Loading…</div>`}
  if(!S.prospects)loadProspects();
  const d=S.trCache[key],rule=S.settings.fineRule,ts=d.trainings;
- const ms=S.members.filter(m=>m.officeId===oid&&m.status!=="inactive");
+ const ms=S.members.filter(m=>m.officeId===oid&&m.status==="active");
  const fineTs=ts.filter(t=>t.type===rule.type);
  const fines=ms.filter(m=>rule.ranks.includes(m.rank)).map(m=>{const due=fineTs.filter(t=>!m.joinedDate||m.joinedDate<=t.date);const missed=due.filter(t=>!t.members.includes(m.id)).length;return{m,missed,due:due.length}}).filter(x=>x.missed>rule.threshold);
  return`<div class="top"><div><h1>Trainings</h1><p>Record who attended each training. Guests (prospects) can be ticked too.</p></div><div class="row">${officePickerSingle(oid,"tOffice")}<input type="month" id="trMonth" data-act="trMonth" value="${esc(mo)}"><button class="btn pri" data-act="newTraining">Record a training</button></div></div>
@@ -412,7 +413,7 @@ function trainingsView(){const oid=singleOffice(),o=officeById(oid);if(!o)return
  <div class="card" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h2>Fines for ${monthLabel(mo)}</h2><span class="small muted">${esc(rule.type)}: ₦${num(rule.amount)} if absent more than ${rule.threshold} time${rule.threshold===1?"":"s"} · ${rule.ranks.length} rank${rule.ranks.length===1?"":"s"} fined${isAdmin()?' · <a data-act="nav" data-v="settings" style="cursor:pointer;color:var(--green);font-weight:600">Change rule</a>':""}</span></div>
  ${fineTs.length?(fines.length?`<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Member</th><th>Rank</th><th>Missed</th><th>Fine</th><th>Status</th><th></th></tr></thead><tbody>${fines.map(x=>{const paid=d.finesPaid.includes(x.m.id);return`<tr><td>${esc(x.m.fullName)}</td><td>${rankTag(x.m.rank)}</td><td>${x.missed} of ${x.due}</td><td><b>₦${num(rule.amount)}</b></td><td>${paid?'<span class="tag green">Paid</span>':'<span class="tag red">Unpaid</span>'}</td><td><button class="btn sm" data-act="finePaid" data-id="${x.m.id}" data-p="${paid?0:1}">${paid?"Mark unpaid":"Mark paid"}</button></td></tr>`}).join("")}</tbody></table></div><p class="small muted" style="margin-top:8px">Total: ₦${num(fines.length*rule.amount)} · Paid: ₦${num(fines.filter(x=>d.finesPaid.includes(x.m.id)).length*rule.amount)}</p>`:'<p class="muted">Nobody owes a fine this month.</p>'):`<p class="muted">No ${esc(rule.type)} recorded this month yet.</p>`}</div>`}
 function trainingModal(t){const oid=singleOffice();t=t||{date:S.todayStr,type:S.settings.trainingTypes[0],title:"",members:[],prospects:[]};
- const ms=S.members.filter(m=>m.officeId===oid&&(m.status!=="inactive"||t.members.includes(m.id)));
+ const ms=S.members.filter(m=>m.officeId===oid&&(m.status==="active"||t.members.includes(m.id)));
  const ps=(S.prospects||[]).filter(p=>p.officeId===oid&&(!["joined","not_interested"].includes(p.status)||t.prospects.includes(p.id)));
  openModal(`<div class="scrim"><div class="modal" role="dialog" aria-modal="true"><div class="mhead"><h2>${t.id?"Edit training":"Record a training"}</h2><button class="x" data-act="close" aria-label="Close">×</button></div>
  <form data-form="training" data-id="${t.id||""}"><div class="fg"><label class="f">Date<input type="date" name="date" value="${esc(t.date)}" max="${S.todayStr}" required></label>
@@ -427,7 +428,7 @@ function trainingModal(t){const oid=singleOffice();t=t||{date:S.todayStr,type:S.
 function perfView(){const oid=singleOffice(),o=officeById(oid);if(!o)return'<div class="card empty">No office available.</div>';
  const mo=S.pfMonth||(S.pfMonth=S.todayStr.slice(0,7)),key=oid+":"+mo;S.pfCache=S.pfCache||{};
  if(!S.pfCache[key]){if(!S.pfLoading){S.pfLoading=true;api("perf_list",{officeId:oid,month:mo}).then(r=>{const map={};r.rows.forEach(x=>map[x.memberId]=x);S.pfCache[key]=map;S.pfLoading=false;render()}).catch(e=>{S.pfLoading=false;toast(e.message)})}return`<div class="top"><h1>Business numbers</h1></div><div class="card empty">Loading…</div>`}
- const map=S.pfCache[key],ms=S.members.filter(m=>m.officeId===oid&&(m.status!=="inactive"||map[m.id]));
+ const map=S.pfCache[key],ms=S.members.filter(m=>m.officeId===oid&&(m.status==="active"||map[m.id]));
  const rows=ms.map(m=>({m,p:map[m.id]||{pv:0,bv:0,sales:0,targetPv:0,note:""}}));
  const totPv=rows.reduce((a,x)=>a+x.p.pv,0),totBv=rows.reduce((a,x)=>a+x.p.bv,0),hit=rows.filter(x=>x.p.targetPv>0&&x.p.pv>=x.p.targetPv).length,withT=rows.filter(x=>x.p.targetPv>0).length;
  const top=rows.filter(x=>x.p.pv>0).sort((a,b)=>b.p.pv-a.p.pv).slice(0,5);
@@ -521,6 +522,63 @@ async function doBackup(){toast("Preparing backup…");const [d]=await Promise.a
  sheets.forEach(([n,rows])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{note:"No data yet"}]),n));
  XLSX.writeFile(wb,`unstoppable-team-backup-${S.todayStr}.xlsx`);toast("Backup downloaded")}
 
+
+/* ===================== DISCIPLINE ===================== */
+const offName=id=>((S.settings.allOffices||[]).find(o=>o.id===+id)||officeById(id)||{}).name||"Office";
+const naira=n=>"₦"+Number(n||0).toLocaleString();
+function discView(){const r=S.settings.discipline||{};const tab=S.discTab||"overview";
+ const tabs=`<div class="seg"><button data-act="discTab" data-t="overview" class="${tab==="overview"?"on":""}">Overview</button><button data-act="discTab" data-t="fines" class="${tab==="fines"?"on":""}">Fines</button></div>`;
+ const head=`<div class="top"><div><h1>Discipline</h1><p>${r.enabled?`Counting from ${fmtDate(r.startDate)}. Excused days never count.`:"The rules are switched off in Settings."}</p></div><div class="row">${tabs}${tab==="fines"?`<input type="month" id="discMonth" data-act="discMonth" value="${esc(S.discMonth||S.todayStr.slice(0,7))}">`:""}</div></div>`;
+ return head+(tab==="fines"?discFinesView():discOverviewView())}
+function discOverviewView(){
+ if(!S.disc){if(!S.discLoading){S.discLoading=true;api("disc_overview").then(d=>{S.disc=d;S.discLoading=false;render()}).catch(e=>{S.discLoading=false;toast(e.message)})}return'<div class="card empty">Loading…</div>'}
+ const d=S.disc,r=d.rules;
+ const cand=d.candidates.map(c=>`<li><span><a data-act="profile" data-id="${c.memberId}" style="cursor:pointer;font-weight:600">${esc(c.name)}</a><span class="small muted" style="display:block">${esc(offName(c.officeId))} · ${c.absences} absences in ${r.transferWindow} days</span></span>${(S.settings.allOffices||[]).length>1?`<button class="btn sm pri" data-act="discTransfer" data-id="${c.memberId}">Transfer…</button>`:'<span class="small muted">Add a second office to transfer</span>'}</li>`).join("");
+ const live=d.transfers.filter(t=>t.status==="scheduled"||t.status==="active");
+ const past=d.transfers.filter(t=>!["scheduled","active"].includes(t.status));
+ const stTag={scheduled:'<span class="tag blue">Starts '+'</span>',active:'<span class="tag gold">In progress</span>',completed:'<span class="tag green">Completed</span>',failed:'<span class="tag red">Failed → suspended</span>',cancelled:'<span class="tag">Cancelled</span>'};
+ const trRow=t=>`<tr><td><b>${esc(t.name)}</b></td><td>${esc(offName(t.from))} → ${esc(offName(t.to))}</td><td>${fmtDate(t.start)} – ${fmtDate(t.end)}</td><td>${t.status==="scheduled"?`<span class="tag blue">Starts ${fmtDate(t.start)}</span>`:stTag[t.status]||esc(t.status)}${t.note?` <span class="small muted">${esc(t.note)}</span>`:""}</td><td>${["scheduled","active"].includes(t.status)?`<button class="btn sm danger" data-act="discCancel" data-id="${t.id}">Cancel</button>`:""}</td></tr>`;
+ return`<div class="grid g2">
+ <div class="card"><h2>Due for transfer</h2><p class="small muted">Absent ${r.transferAbsences}+ times in the last ${r.transferWindow} days (${esc(r.ranks.length?r.ranks.join(", "):"no ranks chosen")}). Choose an office to send them to for ${r.transferDays} days.</p>${cand?`<ul class="list" style="margin-top:8px">${cand}</ul>`:'<p class="muted">Nobody right now.</p>'}</div>
+ <div class="card"><h2>Suspended</h2><p class="small muted">Missed a day during their transfer. Only the admin can lift a suspension.</p>${d.suspended.length?`<ul class="list" style="margin-top:8px">${d.suspended.map(s=>`<li><span><b>${esc(s.name)}</b><span class="small muted" style="display:block">Since ${fmtDate(s.since)} · ${esc(s.reason)}</span></span>${isAdmin()?`<button class="btn sm" data-act="discLift" data-id="${s.memberId}">Lift suspension</button>`:""}</li>`).join("")}</ul>`:'<p class="muted">Nobody is suspended.</p>'}</div></div>
+ <div class="card" style="margin-top:16px"><h2>Transfers</h2>${live.length||past.length?`<div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Member</th><th>Offices</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>${live.concat(past).map(trRow).join("")}</tbody></table></div>`:'<p class="muted">No transfers yet.</p>'}</div>
+ <div class="card" style="margin-top:16px"><h2>Absent more than ${r.listThreshold} times in the last ${r.listDays} days</h2><p class="small muted">Everyone, all ranks. ${fmtDate(d.from)} to ${fmtDate(d.to)}.</p>
+ ${d.list.length?`<div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Member</th>${S.offices.length>1?"<th>Office</th>":""}<th>Absent</th><th>Late</th><th>Absent on</th></tr></thead><tbody>${d.list.map(x=>`<tr class="click" data-act="profile" data-id="${x.memberId}"><td><b>${esc(x.name)}</b></td>${S.offices.length>1?`<td>${esc(offName(x.officeId))}</td>`:""}<td><span class="tag red">${x.absences}</span></td><td>${x.late}</td><td class="small muted" style="white-space:normal;min-width:220px">${x.dates.map(dd=>dayOf(dd).toLocaleDateString(undefined,{day:"numeric",month:"short"})).join(", ")}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">Nobody has been absent that often.</p>'}
+ <div class="row" style="margin-top:10px"><button class="btn sm" data-act="discExport">Export CSV</button></div></div>`}
+function discFinesView(){const mo=S.discMonth||(S.discMonth=S.todayStr.slice(0,7));S.discFines=S.discFines||{};
+ if(!S.discFines[mo]){if(!S.discFLoading){S.discFLoading=true;api("disc_fines",{month:mo}).then(d=>{S.discFines[mo]=d;S.discFLoading=false;render()}).catch(e=>{S.discFLoading=false;toast(e.message)})}return'<div class="card empty">Loading…</div>'}
+ const d=S.discFines[mo],r=d.rules,rows=d.rows;
+ const tot=rows.reduce((a,x)=>a+x.total,0),paid=rows.reduce((a,x)=>a+x.paid,0);
+ return`<div class="grid g3"><div class="card"><div class="stat">${naira(tot)}</div><div class="statlbl">Fines this month</div></div><div class="card"><div class="stat">${naira(paid)}</div><div class="statlbl">Paid</div></div><div class="card"><div class="stat" style="color:${tot-paid>0?"var(--red)":"var(--ink)"}">${naira(tot-paid)}</div><div class="statlbl">Still owing</div></div></div>
+ <p class="small muted" style="margin:12px 0">${naira(r.lateFine)} for each late sign-in, ${naira(r.absentFine)} for each day missed · ${esc(r.ranks.join(", "))} · up to ${fmtDate(d.to)}. Today is added tomorrow morning.</p>
+ <div class="tbl-wrap"><table><thead><tr><th>Member</th>${S.offices.length>1?"<th>Office</th>":""}<th>Late</th><th>Missed</th><th>Total</th><th>Paid</th><th>Owing</th><th></th></tr></thead><tbody>
+ ${rows.map(x=>`<tr><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.rank)}</div></td>${S.offices.length>1?`<td>${esc(offName(x.officeId))}</td>`:""}<td>${x.late}</td><td>${x.absent}</td><td>${naira(x.total)}</td><td>${naira(x.paid)}</td><td><b style="color:${x.owing>0?"var(--red)":"var(--green)"}">${naira(x.owing)}</b></td><td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="discDetail" data-id="${x.memberId}">Details</button>${x.owing>0?`<button class="btn sm pri" data-act="discPayAll" data-id="${x.memberId}">Mark all paid</button>`:""}</div></td></tr>`).join("")||`<tr><td colspan="8" class="empty">No fines this month.</td></tr>`}
+ </tbody></table></div><div class="row" style="margin-top:10px"><button class="btn sm" data-act="discFinesExport">Export CSV</button></div>`}
+function discDetailModal(mid){const d=S.discFines[S.discMonth],x=d.rows.find(y=>y.memberId===mid);if(!x)return;
+ openModal(`<div class="scrim" data-act="closeBg"><div class="modal narrow" role="dialog" aria-modal="true"><div class="mhead"><div><h2>${esc(x.name)}</h2><div class="small muted">Fines for ${monthLabel(S.discMonth)}</div></div><button class="x" data-act="close" aria-label="Close">×</button></div>
+ <ul class="list">${x.items.map((i,n)=>`<li><span>${dayOf(i.date).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} · ${i.kind==="late"?"Late":"Missed office"}</span><span class="row" style="flex-wrap:nowrap"><b>${naira(i.amount)}</b><button class="btn sm ${i.paid?"":"pri"}" data-act="discPayOne" data-id="${mid}" data-n="${n}">${i.paid?"Paid ✓ (undo)":"Mark paid"}</button></span></li>`).join("")}</ul>
+ <p class="small" style="margin-top:10px">Owing: <b>${naira(x.owing)}</b> of ${naira(x.total)}</p></div></div>`)}
+function discTransferModal(mid){const m=S.byId[mid]||{fullName:(S.disc.candidates.find(c=>c.memberId===mid)||{}).name,officeId:(S.disc.candidates.find(c=>c.memberId===mid)||{}).officeId};const r=S.settings.discipline;
+ const opts=(S.settings.allOffices||[]).filter(o=>o.id!==m.officeId);
+ openModal(`<div class="scrim" data-act="closeBg"><div class="modal narrow" role="dialog" aria-modal="true"><div class="mhead"><div><h2>Transfer ${esc(m.fullName)}</h2><div class="small muted">From ${esc(offName(m.officeId))} for ${r.transferDays} days</div></div><button class="x" data-act="close" aria-label="Close">×</button></div>
+ <form data-form="discTransfer" data-id="${mid}"><div class="grid"><label class="f">Send to<select name="to">${opts.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select></label>
+ <label class="f">Starting<input type="date" name="start" value="${addDays(S.todayStr,1)}" min="${S.todayStr}"></label><label class="f">Note (optional)<input name="note"></label></div>
+ <p class="small muted" style="margin-top:10px">On the start date they move to that office's check-in list. Missing any day there suspends them. They return home automatically when the ${r.transferDays} days are done.</p>
+ <div class="row" style="margin-top:12px"><button class="btn pri">Approve transfer</button><button type="button" class="btn" data-act="close">Cancel</button></div></form></div></div>`)}
+function discRulesCard(){const r=S.settings.discipline||{};
+ return`<div class="card" style="margin-top:16px"><h2>Discipline rules</h2><p class="small muted">Excused days never count. Nothing before the start date counts.</p>
+ <form data-form="discRules"><label class="chk" style="margin-top:10px"><input type="checkbox" name="enabled" ${r.enabled?"checked":""}> Rules switched on</label>
+ <div class="fg" style="margin-top:12px"><label class="f">Start counting from<input type="date" name="startDate" value="${esc(r.startDate||"")}"></label>
+ <label class="f">Fine for each late sign-in (₦)<input type="number" min="0" name="lateFine" value="${r.lateFine}"></label>
+ <label class="f">Fine for each day missed (₦)<input type="number" min="0" name="absentFine" value="${r.absentFine}"></label>
+ <label class="f">List people absent more than (times)<input type="number" min="0" name="listThreshold" value="${r.listThreshold}"></label>
+ <label class="f">…in the last (days)<input type="number" min="1" name="listDays" value="${r.listDays}"></label>
+ <label class="f">Transfer after this many absences<input type="number" min="1" name="transferAbsences" value="${r.transferAbsences}"></label>
+ <label class="f">…within (days)<input type="number" min="1" name="transferWindow" value="${r.transferWindow}"></label>
+ <label class="f">Transfer lasts (days)<input type="number" min="1" name="transferDays" value="${r.transferDays}"></label></div>
+ <p class="small muted" style="margin:14px 0 6px">Ranks the fines and transfers apply to</p><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px">${ranks().map(x=>`<label class="chk"><input type="checkbox" name="drank" value="${esc(x)}" ${(r.ranks||[]).includes(x)?"checked":""}> ${esc(x)}</label>`).join("")}</div>
+ <div class="row" style="margin-top:12px"><button class="btn pri">Save rules</button></div></form></div>`}
+
 /* ---------- modals ---------- */
 function openModal(html){document.getElementById("modal").innerHTML=html;const f=document.querySelector("#modal input:not([type=hidden]):not([type=file]):not([readonly]),#modal button");if(f)f.focus()}
 function closeModal(){stopCam();S.convertingProspect=null;document.getElementById("modal").innerHTML="";if(askConfirm.res){askConfirm.res(false);askConfirm.res=null}}
@@ -536,7 +594,7 @@ function download(name,text){const a=document.createElement("a");a.href=URL.crea
 /* ---------- events ---------- */
 async function run(fn){try{await fn()}catch(e){toast(e.message)}}
 document.addEventListener("click",ev=>{const el=ev.target.closest("[data-act]");if(!el)return;const a=el.dataset.act;if(a==="closeBg"&&ev.target!==el)return;
- if(["photo","leaderOffice","office","mf","attDate","attMonth","finMonth","kq","mq","pq","pstatus","trMonth","pfMonth","kioskPhoto","roleSel"].includes(a))return;
+ if(["photo","leaderOffice","office","mf","attDate","attMonth","finMonth","kq","mq","pq","pstatus","trMonth","pfMonth","kioskPhoto","roleSel","discMonth"].includes(a))return;
  run(async()=>{const id=el.dataset.id?+el.dataset.id:null;
  if(a==="nav"){S.view=el.dataset.v;render();window.scrollTo(0,0)}
  else if(a==="retry"){S.error=null;S.loaded=false;render();boot()}
@@ -545,6 +603,16 @@ document.addEventListener("click",ev=>{const el=ev.target.closest("[data-act]");
  else if(a==="logout"){await api("logout");S.me=null;S.users=null;S.fin.entries=null;closeModal();render()}
  else if(a==="account")accountModal();
  else if(a==="forgot")forgotModal();
+ else if(a==="discTab"){S.discTab=el.dataset.t;render()}
+ else if(a==="discTransfer")discTransferModal(id);
+ else if(a==="discCancel"){if(!(await askConfirm("Cancel this transfer?","If it has started, the member goes straight back to their home office.","Cancel transfer")))return;await api("disc_transfer_cancel",{id});S.disc=null;await refresh();toast("Transfer cancelled")}
+ else if(a==="discLift"){const m=S.byId[id]||{fullName:"this member"};if(!(await askConfirm(`Lift ${m.fullName}'s suspension?`,"They become active again and can sign in from today.","Lift suspension")))return;await api("disc_lift",{memberId:id});closeModal();S.disc=null;await refresh();toast("Suspension lifted")}
+ else if(a==="discSuspend"){const m=S.byId[id];if(!(await askConfirm(`Suspend ${m.fullName}?`,"They can't sign in until you lift it.","Suspend")))return;await api("disc_suspend",{memberId:id});closeModal();S.disc=null;await refresh();toast("Suspended")}
+ else if(a==="discDetail")discDetailModal(id);
+ else if(a==="discPayAll"){const x=S.discFines[S.discMonth].rows.find(y=>y.memberId===id);await api("disc_pay",{memberId:id,paid:true,items:x.items.filter(i=>!i.paid)});S.discFines={};render();toast("Marked as paid")}
+ else if(a==="discPayOne"){const x=S.discFines[S.discMonth].rows.find(y=>y.memberId===id),it=x.items[+el.dataset.n];await api("disc_pay",{memberId:id,paid:!it.paid,items:[it]});delete S.discFines[S.discMonth];closeModal();await new Promise(r=>{const t=setInterval(()=>{if(S.discFines[S.discMonth]){clearInterval(t);r()}},100);render()});discDetailModal(id)}
+ else if(a==="discExport"){download(`absent-${S.todayStr}.csv`,csv([["Member","Office","Absent","Late","Absent on"],...S.disc.list.map(x=>[x.name,offName(x.officeId),x.absences,x.late,x.dates.join(" ")])]))}
+ else if(a==="discFinesExport"){const d=S.discFines[S.discMonth];download(`fines-${S.discMonth}.csv`,csv([["Member","Office","Rank","Date","Reason","Amount","Paid"],...d.rows.flatMap(x=>x.items.map(i=>[x.name,offName(x.officeId),x.rank,i.date,i.kind==="late"?"Late":"Missed office",i.amount,i.paid?"Yes":"No"]))]))}
  else if(a==="backToLogin"){S.resetToken=null;history.replaceState(null,"",location.pathname);render()}
  else if(a==="logFu")followupModal(S.byId[id]);
  else if(a==="delFu"){if(!(await askConfirm("Delete this follow-up?","It will be removed from the record.","Delete")))return;await api("followup_delete",{id});await refresh(true);const m=S.byId[+el.dataset.m];if(m){openModal(profileModal(m));fillProfile(m)}toast("Follow-up deleted")}
@@ -605,6 +673,7 @@ document.addEventListener("change",ev=>{const el=ev.target,a=el.dataset.act;
  if(a==="office"){S.office=el.value==="all"?"all":+el.value;render()}
  else if(a==="mf"){S.memFilter[el.dataset.k]=el.value;render()}
  else if(a==="pstatus"){S.pf.status=el.value;render()}
+ else if(a==="discMonth"){S.discMonth=el.value||S.todayStr.slice(0,7);render()}
  else if(a==="trMonth"){S.trMonth=el.value||S.todayStr.slice(0,7);render()}
  else if(a==="pfMonth"){S.pfMonth=el.value||S.todayStr.slice(0,7);render()}
  else if(a==="roleSel"){document.getElementById("roleOffice").style.display=el.value==="admin"?"none":""}
@@ -621,6 +690,8 @@ document.addEventListener("submit",ev=>{const form=ev.target,kind=form.dataset.f
  const fd=new FormData(form),g=k=>(fd.get(k)||"").toString().trim();const btn=form.querySelector("button:not([type=button])");if(btn)btn.disabled=true;
  run(async()=>{try{
  if(kind==="login"){const j=await api("login",{email:g("email"),password:fd.get("password")});S.me=j.user;S.view="dashboard";S.office="all";await refresh()}
+ else if(kind==="discTransfer"){const r=await api("disc_transfer",{memberId:+form.dataset.id,toOffice:+g("to"),start:g("start"),note:g("note")});closeModal();S.disc=null;await refresh();toast(`Transfer approved: ${fmtDate(r.start)} to ${fmtDate(r.end)}`)}
+ else if(kind==="discRules"){const R=["lateFine","absentFine","listThreshold","listDays","transferAbsences","transferWindow","transferDays"],rules={enabled:!!fd.get("enabled"),startDate:g("startDate"),ranks:fd.getAll("drank")};R.forEach(k=>rules[k]=+g(k));await api("disc_rules_save",{rules});S.disc=null;S.discFines={};await refresh();toast("Rules saved")}
  else if(kind==="forgot"){await api("forgot_password",{email:g("email")});closeModal();toast("If that email is registered, a reset link is on its way.")}
  else if(kind==="reset"){if(fd.get("new")!==fd.get("again")){toast("The two passwords don't match.");return}await api("reset_password",{token:S.resetToken,new:fd.get("new")});S.resetToken=null;history.replaceState(null,"",location.pathname);render();toast("Password changed. Log in with your new password.")}
  else if(kind==="followup"){const id=+form.dataset.id;await api("followup_add",{memberId:id,date:g("date"),method:g("method"),outcome:g("outcome"),nextStep:g("nextStep")});await refresh(true);const m=S.byId[id];openModal(profileModal(m));fillProfile(m);render();toast("Follow-up saved")}
